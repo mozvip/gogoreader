@@ -28,9 +28,3 @@ type Album struct {
 func (a *Album) GetConfigurationFile(configFolder string) string {
 	return path.Join(configFolder, a.MD5+".yml")
 }
-
-type AlbumPreferences struct {
-	MD5         string
-	CurrentPage int
-	Pages       []PagePreferences
-}
