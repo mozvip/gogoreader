@@ -28,7 +28,7 @@ func (P *PDFComicBook) List() ([]string, error) {
 func (P *PDFComicBook) ReadEntry(fileName string) (image.Image, error) {
 
 	var index int
-	fmt.Sscanf(fileName, "Page %d", &index)
+	fmt.Sscanf(fileName, "PDF Page %d", &index)
 
 	page, err := P.pdfReader.GetPage(index)
 	if err != nil {
@@ -68,7 +68,7 @@ func (P *PDFComicBook) Init() (err error) {
 		return err
 	}
 
-	// Try decrypting with an empty one.
+	// Try decrypting with an empty password
 	if isEncrypted {
 		auth, err := P.pdfReader.Decrypt([]byte(""))
 		if err != nil {
@@ -86,7 +86,7 @@ func (P *PDFComicBook) Init() (err error) {
 	}
 
 	for i := 0; i < numPages; i++ {
-		P.Pages = append(P.Pages, fmt.Sprintf("Page %03d", i+1))
+		P.Pages = append(P.Pages, fmt.Sprintf("PDF Page %03d", i+1))
 	}
 
 	return nil

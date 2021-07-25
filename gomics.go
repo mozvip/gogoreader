@@ -238,10 +238,17 @@ func (g *Gomics) preparePage(pageData *PageData) (err error) {
 
 	img := pageData.rawImage
 	if preferences.RemoveBorders {
-		img = colorcrop.Crop(
-			img,                            // for source image
-			color.RGBA{255, 255, 255, 255}, // crop white border
-			0.5)                            // with 50% thresold
+
+		// colorcrop requires the image to implement this interface to work
+		_, ok := interface{}(img).(interface {
+			SubImage(r image.Rectangle) image.Image
+		})
+		if ok {
+			img = colorcrop.Crop(
+				img,                            // for source image
+				color.RGBA{255, 255, 255, 255}, // crop white border
+				0.5)                            // with 50% thresold
+		}
 	}
 
 	if pageData.Rotation != None {

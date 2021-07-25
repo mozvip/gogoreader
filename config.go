@@ -18,7 +18,7 @@ func buildDefaultConfig() error {
 	}
 	for _, fileName := range content {
 		ext := strings.ToLower(fileName)
-		if strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp") || strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") {
+		if strings.HasPrefix(fileName, "PDF Page") || strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp") || strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") {
 			album.Pages = append(album.Pages, PageData{
 				FileName: fileName,
 				Visible:  true,
