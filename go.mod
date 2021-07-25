@@ -4,29 +4,19 @@ go 1.14
 
 require (
 	github.com/EdlinOrg/prominentcolor v1.0.0
-	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/disintegration/imaging v1.6.2
-	github.com/go-delve/delve v1.7.0 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210715014612-ab6297867137 // indirect
 	github.com/hajimehoshi/ebiten/v2 v2.1.3
 	github.com/jinzhu/gorm v1.9.16
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lu4p/binclude v0.0.0-20210217002309-f5cbd98bb200
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/mattn/go-colorable v0.1.8 // indirect
-	github.com/mattn/go-isatty v0.0.13 // indirect
-	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mattn/go-sqlite3 v1.14.8 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nwaples/rardecode v1.1.1
 	github.com/nxshock/colorcrop v0.0.0-20210323183931-9fb5e5006ee3
 	github.com/oliamb/cutter v0.2.2 // indirect
-	github.com/peterh/liner v1.2.1 // indirect
-	github.com/russross/blackfriday v1.6.0 // indirect
-	github.com/spf13/cobra v1.2.1 // indirect
 	github.com/unidoc/unipdf/v3 v3.26.1
-	go.starlark.net v0.0.0-20210602144842-1cdb82c9e17a // indirect
-	golang.org/x/arch v0.0.0-20210502124803-cbf565b21d1e // indirect
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
 	golang.org/x/exp v0.0.0-20210722180016-6781d3edade3 // indirect
 	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d

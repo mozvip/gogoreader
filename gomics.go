@@ -22,6 +22,7 @@ import (
 
 type Gomics struct {
 	currentImages []*ebiten.Image
+	currentImage  *ebiten.Image
 	size          Size
 }
 
@@ -79,6 +80,7 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
+		// FIXME : move at the album level, not global
 		preferences.GrayScale = !preferences.GrayScale
 		g.ClearCache()
 	}
@@ -126,35 +128,32 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 		screen.Fill(pageData.ProminentColor)
 	}
 
-	totalWidth := 0
-	for _, img := range g.currentImages {
-		width, _ := img.Size()
-		totalWidth += width
-	}
+	tx := 0
+	ty := 0
+	scale := float64(1)
 
-	currentX := g.size.w/2 - totalWidth/2
-	for _, img := range g.currentImages {
-		width, height := img.Size()
-
-		// pageData.Bottom - pageData.Top
-
-		top := 0
-		if height < width {
-			top = (g.size.h - height) / 2
+	width, height := g.currentImage.Size()
+	if width > g.size.w {
+		scale = float64(g.size.w) / float64(width)
+		ty = int((float64(g.size.h) - (float64(height) * scale)) / float64(2))
+	} else {
+		if height < g.size.h {
+			scale = float64(g.size.h) / float64(height)
 		}
-
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(currentX), float64(top))
-		/*
-				SourceRect: &image.Rectangle{
-					Min: image.Point{Y: pageData.Top},
-					Max: image.Point{X: width, Y: height - pageData.Bottom},
-				},
-			}
-		*/
-		screen.DrawImage(img, op)
-		currentX += width
+		tx = int((float64(g.size.w) - (float64(width) * scale)) / float64(2))
 	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(tx), float64(ty))
+	op.GeoM.Scale(scale, scale)
+	/*
+			SourceRect: &image.Rectangle{
+				Min: image.Point{Y: pageData.Top},
+				Max: image.Point{X: width, Y: height - pageData.Bottom},
+			},
+		}
+	*/
+	screen.DrawImage(g.currentImage, op)
 
 }
 
@@ -377,6 +376,32 @@ func (g *Gomics) refresh() error {
 			nextPage = index + 1
 			break
 		}
+	}
+
+	if len(g.currentImages) > 1 {
+		totalWidth := 0
+		maxHeight := 0
+		for _, img := range g.currentImages {
+			width, height := img.Size()
+			if height > maxHeight {
+				maxHeight = height
+			}
+			totalWidth += width
+		}
+
+		g.currentImage = ebiten.NewImage(totalWidth, maxHeight)
+
+		tx := 0
+		for _, img := range g.currentImages {
+			width, height := img.Size()
+			ty := (maxHeight - height) / 2
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(float64(tx), float64(ty))
+			g.currentImage.DrawImage(img, opts)
+			tx += width
+		}
+	} else {
+		g.currentImage = g.currentImages[0]
 	}
 
 	// prepare next page in the background
