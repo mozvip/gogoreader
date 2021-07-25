@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"image/color"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -31,6 +32,7 @@ type PageData struct {
 
 	rawImage image.Image
 	imgData  *ebiten.Image
+	mu       sync.Mutex
 }
 
 func (p *PageData) RotateRight() {

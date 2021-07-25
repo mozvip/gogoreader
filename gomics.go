@@ -226,8 +226,10 @@ func (g *Gomics) preparePage(pageData *PageData) (err error) {
 		return nil
 	}
 
+	pageData.mu.Lock()
+	defer pageData.mu.Unlock()
+
 	if pageData.rawImage == nil {
-		log.Printf("Loading %s\n", pageData.FileName)
 		pageData.rawImage, err = comicBook.ReadEntry(pageData.FileName)
 		if err != nil {
 			return err
