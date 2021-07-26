@@ -23,8 +23,6 @@ func buildDefaultConfig() error {
 				FileName: fileName,
 				Visible:  true,
 			})
-		} else if strings.HasSuffix(ext, ".xml") {
-			// TODO
 		}
 	}
 	if len(album.Pages) == 0 {

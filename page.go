@@ -1,7 +1,6 @@
 package main
 
 import (
-	"image"
 	"image/color"
 	"sync"
 
@@ -30,9 +29,8 @@ type PageData struct {
 	Top    int
 	Bottom int
 
-	rawImage image.Image
-	imgData  *ebiten.Image
-	mu       sync.Mutex
+	imgData *ebiten.Image
+	mu      sync.Mutex
 }
 
 func (p *PageData) RotateRight() {

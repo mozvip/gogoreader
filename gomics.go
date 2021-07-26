@@ -14,16 +14,16 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/lu4p/binclude"
 	"github.com/mozvip/gomics/files"
 	"github.com/nxshock/colorcrop"
 )
 
 type Gomics struct {
-	currentImages []*ebiten.Image
-	currentImage  *ebiten.Image
-	size          Size
+	currentImage    *ebiten.Image
+	prominentColors []color.RGBA
+	size            Size
+	needsRefresh    bool
 }
 
 func (g *Gomics) InitFullScreen() {
@@ -62,21 +62,32 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyHome) {
-		g.goTo(0) // FIXME : First visible may not be 0
+		// go to the first visible page
+		for i := 0; i < len(album.Pages); i++ {
+			if album.Pages[i].Visible {
+				g.goTo(i)
+				break
+			}
+		}
 	}
 
-	lastImageIndex := len(album.Pages) - 1
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnd) {
-		g.goTo(lastImageIndex)
+		// go to the last visible page
+		for i := len(album.Pages) - 1; i > 0; i-- {
+			if album.Pages[i].Visible {
+				g.goTo(i)
+				break
+			}
+		}
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
 		album.Pages[album.CurrentPage].RotateLeft()
-		g.refresh()
+		g.needsRefresh = true
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
 		album.Pages[album.CurrentPage].RotateRight()
-		g.refresh()
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
@@ -106,55 +117,59 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyShift) {
-		if album.Pages[album.CurrentPage].Position == SinglePage {
+		if album.Pages[album.CurrentPage].Position == SinglePage && album.CurrentPage < len(album.Pages)-1 {
 			album.Pages[album.CurrentPage].Position = LeftPage
 			album.Pages[album.CurrentPage+1].Position = RightPage
 		} else if album.Pages[album.CurrentPage].Position == LeftPage {
 			album.Pages[album.CurrentPage].Position = SinglePage
 			album.Pages[album.CurrentPage+1].Position = SinglePage
 		}
-		g.refresh()
+		g.needsRefresh = true
 	}
 
-	return nil
-
+	return g.refresh()
 }
 
 func (g *Gomics) Draw(screen *ebiten.Image) {
 
-	pageData := album.Pages[album.CurrentPage]
-	ebiten.SetWindowTitle(pageData.FileName)
-	if pageData.ProminentCalculated {
-		screen.Fill(pageData.ProminentColor)
-	}
+	/*
+		w := g.size.w / 2
+		if len(g.prominentColors) > 1 {
+			left := image.Rectangle{Min: image.Pt(0, 0), Max: image.Pt(w, g.size.h)}
+			right := image.Rectangle{Min: image.Pt(w, 0), Max: image.Pt(g.size.w, g.size.h)}
+			screen.SubImage(left).Fill(g.prominentColors[0])
+			screen.SubImage(right).Fill(g.prominentColors[1])
+		}
+	*/
+
+	screen.Fill(g.prominentColors[0])
 
 	tx := 0
 	ty := 0
 	scale := float64(1)
 
 	width, height := g.currentImage.Size()
-	if width > g.size.w {
-		scale = float64(g.size.w) / float64(width)
-		ty = int((float64(g.size.h) - (float64(height) * scale)) / float64(2))
+
+	xscale := float64(g.size.w) / float64(width)
+	yscale := float64(g.size.h) / float64(height)
+
+	if xscale < yscale {
+		scale = xscale
+		tx = 0
+		ty = int(((float64(g.size.h) - (float64(height) * scale)) / float64(2)))
 	} else {
-		if height < g.size.h {
-			scale = float64(g.size.h) / float64(height)
-		}
-		tx = int((float64(g.size.w) - (float64(width) * scale)) / float64(2))
+		scale = yscale
+		ty = 0
+		tx = int(((float64(g.size.w) - (float64(width) * scale)) / float64(2)))
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(tx), float64(ty))
 	op.GeoM.Scale(scale, scale)
-	/*
-			SourceRect: &image.Rectangle{
-				Min: image.Point{Y: pageData.Top},
-				Max: image.Point{X: width, Y: height - pageData.Bottom},
-			},
-		}
-	*/
+	op.GeoM.Translate(float64(tx), float64(ty))
+	// TODO: make filter a setting
+	// op.Filter = ebiten.FilterNearest
+	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(g.currentImage, op)
-
 }
 
 func (g *Gomics) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -164,7 +179,6 @@ func (g *Gomics) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHei
 }
 
 var comicBook files.ComicBookArchive
-
 var configFolder string
 var archiveFile string
 
@@ -214,30 +228,50 @@ func AppQuit() {
 	os.Exit(0)
 }
 
-func (g *Gomics) preparePage(pageData *PageData) (err error) {
-
-	if pageData.imgData != nil {
-		// image was already prepared
-		return nil
-	}
-
-	if !pageData.Visible {
-		return nil
-	}
+func (g *Gomics) preparePage(pageData *PageData) error {
 
 	pageData.mu.Lock()
 	defer pageData.mu.Unlock()
 
-	if pageData.rawImage == nil {
-		pageData.rawImage, err = comicBook.ReadEntry(pageData.FileName)
-		if err != nil {
-			return err
+	if !pageData.Visible || pageData.imgData != nil {
+		// image was already prepared
+		return nil
+	}
+
+	img, err := comicBook.ReadEntry(pageData.FileName)
+	if err != nil {
+		log.Printf("Error reading page %s\n", pageData.FileName)
+		return err
+	}
+
+	if pageData.Rotation != None {
+		if pageData.Rotation == Left {
+			img = imaging.Rotate90(img)
+		} else if pageData.Rotation == Right {
+			img = imaging.Rotate270(img)
 		}
 	}
 
-	img := pageData.rawImage
-	if preferences.RemoveBorders {
+	maxBounds := img.Bounds().Max
+	if maxBounds.Y > maxBounds.X {
+		sizeY := g.size.h
+		if maxBounds.Y < g.size.h {
+			sizeY = maxBounds.Y
+		}
+		img = imaging.Resize(img, 0, sizeY, imaging.Lanczos)
+	} else {
+		sizeX := g.size.w
+		if maxBounds.X < g.size.w {
+			sizeX = maxBounds.X
+		}
+		img = imaging.Resize(img, sizeX, 0, imaging.Lanczos)
+	}
 
+	if preferences.GrayScale {
+		img = imaging.Grayscale(img)
+	}
+
+	if preferences.RemoveBorders {
 		// colorcrop requires the image to implement this interface to work
 		_, ok := interface{}(img).(interface {
 			SubImage(r image.Rectangle) image.Image
@@ -250,36 +284,9 @@ func (g *Gomics) preparePage(pageData *PageData) (err error) {
 		}
 	}
 
-	if pageData.Rotation != None {
-		if pageData.Rotation == Left {
-			img = imaging.Rotate90(img)
-		} else if pageData.Rotation == Right {
-			img = imaging.Rotate270(img)
-		}
-	}
-
-	imageBounds := img.Bounds().Max
-	if imageBounds.Y > imageBounds.X {
-		sizeY := g.size.h
-		if imageBounds.Y < g.size.h {
-			sizeY = imageBounds.Y
-		}
-		img = imaging.Resize(img, 0, sizeY, imaging.Lanczos)
-	} else {
-		sizeX := g.size.w
-		if imageBounds.X < g.size.w {
-			sizeX = imageBounds.X
-		}
-		img = imaging.Resize(img, sizeX, 0, imaging.Lanczos)
-	}
-
-	if preferences.GrayScale {
-		img = imaging.Grayscale(img)
-	}
-
-	pageData.imgData = ebiten.NewImageFromImage(img)
 	if !pageData.ProminentCalculated {
-		kmeans, err := prominentcolor.Kmeans(img)
+		// K=4 seems to work better than 3 for us
+		kmeans, err := prominentcolor.KmeansWithAll(4, img, prominentcolor.ArgumentDefault, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
 		if err == nil {
 			pageData.ProminentColor = color.RGBA{
 				R: uint8(kmeans[0].Color.R),
@@ -290,6 +297,8 @@ func (g *Gomics) preparePage(pageData *PageData) (err error) {
 		}
 		pageData.ProminentCalculated = true
 	}
+
+	pageData.imgData = ebiten.NewImageFromImage(img)
 
 	return err
 }
@@ -337,8 +346,10 @@ func main() {
 	gomics := &Gomics{}
 	gomics.size.w, gomics.size.h = ebiten.WindowSize()
 
+	ebiten.SetRunnableOnUnfocused(true)
+	ebiten.SetWindowResizable(true)
 	gomics.InitFullScreen()
-	gomics.refresh()
+	gomics.needsRefresh = true
 
 	if err := ebiten.RunGame(gomics); err != nil {
 		panic(err)
@@ -351,37 +362,46 @@ func (g *Gomics) goTo(newImageIndex int) error {
 		return nil
 	}
 	album.CurrentPage = newImageIndex
-	return g.refresh()
+	g.needsRefresh = true
+	return nil
 }
 
 func (g *Gomics) ClearCache() {
 	for index := 0; index < len(album.Pages); index++ {
 		album.Pages[index].imgData = nil
 	}
-	g.refresh()
+	g.needsRefresh = true
 }
 
 func (g *Gomics) refresh() error {
 
-	g.currentImages = g.currentImages[:0]
+	if !g.needsRefresh {
+		return nil
+	}
+	g.needsRefresh = false
+
+	var currentImages []*ebiten.Image
 	var nextPage int
+
+	g.prominentColors = g.prominentColors[:0]
 	for index := album.CurrentPage; index < len(album.Pages); index++ {
 		pageData := &album.Pages[index]
 		err := g.preparePage(pageData)
 		if err != nil {
 			return err
 		}
-		g.currentImages = append(g.currentImages, pageData.imgData)
+		currentImages = append(currentImages, pageData.imgData)
+		g.prominentColors = append(g.prominentColors, pageData.ProminentColor)
 		if pageData.Position != LeftPage {
 			nextPage = index + 1
 			break
 		}
 	}
 
-	if len(g.currentImages) > 1 {
+	if len(currentImages) > 1 {
 		totalWidth := 0
 		maxHeight := 0
-		for _, img := range g.currentImages {
+		for _, img := range currentImages {
 			width, height := img.Size()
 			if height > maxHeight {
 				maxHeight = height
@@ -392,7 +412,7 @@ func (g *Gomics) refresh() error {
 		g.currentImage = ebiten.NewImage(totalWidth, maxHeight)
 
 		tx := 0
-		for _, img := range g.currentImages {
+		for _, img := range currentImages {
 			width, height := img.Size()
 			ty := (maxHeight - height) / 2
 			opts := &ebiten.DrawImageOptions{}
@@ -401,7 +421,7 @@ func (g *Gomics) refresh() error {
 			tx += width
 		}
 	} else {
-		g.currentImage = g.currentImages[0]
+		g.currentImage = currentImages[0]
 	}
 
 	// prepare next page in the background
@@ -411,6 +431,13 @@ func (g *Gomics) refresh() error {
 		if pageData.Position == LeftPage {
 			pageData := &album.Pages[nextPage+1]
 			go g.preparePage(pageData)
+		}
+	}
+
+	if album.CurrentPage > 1 {
+		// remove old images from cache
+		for index := 0; index < album.CurrentPage; index++ {
+			album.Pages[index].imgData = nil
 		}
 	}
 

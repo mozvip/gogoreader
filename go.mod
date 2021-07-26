@@ -7,11 +7,9 @@ require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210715014612-ab6297867137 // indirect
 	github.com/hajimehoshi/ebiten/v2 v2.1.3
-	github.com/jinzhu/gorm v1.9.16
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lu4p/binclude v0.0.0-20210217002309-f5cbd98bb200
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.8 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nwaples/rardecode v1.1.1
 	github.com/nxshock/colorcrop v0.0.0-20210323183931-9fb5e5006ee3
