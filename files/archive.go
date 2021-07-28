@@ -64,6 +64,7 @@ func FromFile(fileName string) (ComicBookArchive, error) {
 	}
 	defer file.Close()
 
+	log.Printf("Computing MD5 for %s\n", fileName)
 	h := md5.New()
 	if _, err := io.Copy(h, file); err != nil {
 		return nil, err

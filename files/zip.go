@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"fmt"
 	"image"
-	"io/ioutil"
 )
 
 type ZippedComicBook struct {
@@ -28,11 +27,7 @@ func (z *ZippedComicBook) ReadEntry(fileName string) (image.Image, error) {
 				return nil, err
 			}
 			defer rc.Close()
-			bytes, err := ioutil.ReadAll(rc)
-			if err != nil {
-				return nil, err
-			}
-			return CreateImage(fileName, bytes)
+			return CreateImageFromReader(fileName, rc)
 		}
 	}
 	return nil, fmt.Errorf("file %s was not found in archive", fileName)
@@ -49,4 +44,3 @@ func (z *ZippedComicBook) List() ([]string, error) {
 	}
 	return result, nil
 }
-

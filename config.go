@@ -41,15 +41,7 @@ func getGlobalConfigurationFile() string {
 }
 
 func readConfiguration(fileMD5 string) error {
-	userConfigDir, err := os.UserConfigDir()
-	if err != nil {
-		return err
-	}
-	configFolder = path.Join(userConfigDir, "gomics")
-	err = os.MkdirAll(configFolder, 0600)
-	if err != nil {
-		return err
-	}
+	var err error
 
 	globalConfigurationFile := getGlobalConfigurationFile()
 	_, err = os.Stat(globalConfigurationFile)

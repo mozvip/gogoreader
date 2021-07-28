@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 
 	"github.com/EdlinOrg/prominentcolor"
 	"github.com/disintegration/imaging"
@@ -303,6 +304,28 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 	return err
 }
 
+var logFile *os.File
+
+func init() {
+	var err error
+
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		panic(err)
+	}
+	configFolder = path.Join(userConfigDir, "gogoreader")
+	err = os.MkdirAll(configFolder, 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	logFile, err = os.OpenFile(path.Join(configFolder, "gogoreader.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	log.SetOutput(logFile)
+}
+
 func main() {
 
 	binclude.Include("gomics.png")
@@ -342,7 +365,7 @@ func main() {
 	}
 
 	ebiten.SetWindowSize(preferences.WindowedSize.w, preferences.WindowedSize.h)
-	ebiten.SetWindowTitle("gomics")
+	ebiten.SetWindowTitle(archiveFile)
 	gomics := &Gomics{}
 	gomics.size.w, gomics.size.h = ebiten.WindowSize()
 
