@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"io/ioutil"
@@ -14,6 +15,7 @@ import (
 	"github.com/EdlinOrg/prominentcolor"
 	"github.com/disintegration/imaging"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/lu4p/binclude"
 	"github.com/mozvip/gomics/files"
@@ -25,6 +27,7 @@ type Gomics struct {
 	prominentColors []color.RGBA
 	size            Size
 	needsRefresh    bool
+	infoDisplay     bool
 }
 
 func (g *Gomics) InitFullScreen() {
@@ -37,7 +40,15 @@ func (g *Gomics) InitFullScreen() {
 	}
 }
 
+func (g *Gomics) toggleInfoDisplay() {
+	g.infoDisplay = !g.infoDisplay
+}
+
 func (g *Gomics) Update() error {
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
+		g.toggleInfoDisplay()
+	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
 		album.Pages[album.CurrentPage].Top++
@@ -171,6 +182,11 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 	// op.Filter = ebiten.FilterNearest
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(g.currentImage, op)
+
+	if g.infoDisplay {
+		message := fmt.Sprintf("%d %%\nscale %.2f", album.CurrentPage*100/len(album.Pages), scale)
+		ebitenutil.DebugPrint(screen, message)
+	}
 }
 
 func (g *Gomics) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -251,21 +267,6 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		} else if pageData.Rotation == Right {
 			img = imaging.Rotate270(img)
 		}
-	}
-
-	maxBounds := img.Bounds().Max
-	if maxBounds.Y > maxBounds.X {
-		sizeY := g.size.h
-		if maxBounds.Y < g.size.h {
-			sizeY = maxBounds.Y
-		}
-		img = imaging.Resize(img, 0, sizeY, imaging.Lanczos)
-	} else {
-		sizeX := g.size.w
-		if maxBounds.X < g.size.w {
-			sizeX = maxBounds.X
-		}
-		img = imaging.Resize(img, sizeX, 0, imaging.Lanczos)
 	}
 
 	if preferences.GrayScale {
@@ -357,7 +358,10 @@ func main() {
 		panic(err)
 	}
 	defer comicBook.Close()
-	comicBook.Init()
+	err = comicBook.Init()
+	if err != nil {
+		panic(err)
+	}
 
 	err = readConfiguration(comicBook.GetMD5())
 	if err != nil {
