@@ -21,6 +21,7 @@ type PagePreferences struct {
 type PageData struct {
 	FileName            string
 	Rotation            Rotation
+	RotationAngle       float64
 	Position            Position
 	Visible             bool
 	ProminentColor      color.RGBA

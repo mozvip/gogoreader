@@ -13,6 +13,8 @@ type RaredComicBook struct {
 	archive            *rardecode.ReadCloser
 	header             *rardecode.FileHeader
 	currentHeaderIndex int
+
+	currentRawImage image.Image
 }
 
 func (z *RaredComicBook) Close() {
@@ -50,6 +52,9 @@ func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
 
 	for index, v := range z.contents {
 		if fileName == v {
+			if index == z.currentHeaderIndex {
+				return z.currentRawImage, nil
+			}
 			if index < z.currentHeaderIndex {
 				// we need to reload the rar file
 				z.reload()
@@ -61,7 +66,8 @@ func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
 	var err error
 	for err != io.EOF {
 		if z.header.Name == fileName && z.header.UnPackedSize > 0 {
-			return CreateImageFromReader(fileName, z.archive)
+			z.currentRawImage, err = CreateImageFromReader(fileName, z.archive)
+			return z.currentRawImage, err
 		}
 		z.header, err = z.archive.Next()
 		z.currentHeaderIndex++

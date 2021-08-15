@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
 	"sort"
 	"strings"
 
@@ -34,10 +33,6 @@ func buildDefaultConfig() error {
 	})
 
 	return nil
-}
-
-func getGlobalConfigurationFile() string {
-	return path.Join(configFolder, "config.yml")
 }
 
 func readConfiguration(fileMD5 string) error {

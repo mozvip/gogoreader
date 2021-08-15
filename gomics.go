@@ -62,6 +62,14 @@ func (g *Gomics) Update() error {
 		g.NextPage()
 	}
 
+	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		preferences.Filter = ebiten.FilterLinear
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF2) {
+		preferences.Filter = ebiten.FilterNearest
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyPageUp) {
 		g.PreviousPage()
 	}
@@ -111,6 +119,21 @@ func (g *Gomics) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		preferences.RemoveBorders = !preferences.RemoveBorders
 		g.ClearCache()
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+		album.Pages[album.CurrentPage].RotationAngle -= 0.05
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+		album.Pages[album.CurrentPage].RotationAngle += 0.05
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyKPDivide) {
+		album.Pages[album.CurrentPage].RotationAngle = 0
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF11) || inpututil.IsKeyJustPressed(ebiten.KeyF) {
@@ -176,15 +199,16 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(scale, scale)
+	//op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64(tx), float64(ty))
-	// TODO: make filter a setting
-	// op.Filter = ebiten.FilterNearest
-	op.Filter = ebiten.FilterLinear
+	op.Filter = preferences.Filter
+
+	// op.ColorM.ChangeHSV(1.0, 1.0, 1.0)
+
 	screen.DrawImage(g.currentImage, op)
 
 	if g.infoDisplay {
-		message := fmt.Sprintf("%d %%\nscale %.2f", album.CurrentPage*100/len(album.Pages), scale)
+		message := fmt.Sprintf("%d %%\nscale %.2f\nangle %f", album.CurrentPage*100/len(album.Pages), scale, album.Pages[album.CurrentPage].RotationAngle)
 		ebitenutil.DebugPrint(screen, message)
 	}
 }
@@ -202,15 +226,6 @@ var archiveFile string
 type Size struct {
 	w, h int
 }
-
-type Preferences struct {
-	FullScreen    bool
-	GrayScale     bool
-	RemoveBorders bool
-	WindowedSize  Size
-}
-
-var preferences Preferences
 
 var album Album
 
@@ -257,7 +272,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 
 	img, err := comicBook.ReadEntry(pageData.FileName)
 	if err != nil {
-		log.Printf("Error reading page %s\n", pageData.FileName)
+		log.Printf("Error reading page %s - %s\n", pageData.FileName, err.Error())
 		return err
 	}
 
@@ -273,6 +288,10 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		img = imaging.Grayscale(img)
 	}
 
+	if pageData.RotationAngle != 0 {
+		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
+	}
+
 	if preferences.RemoveBorders {
 		// colorcrop requires the image to implement this interface to work
 		_, ok := interface{}(img).(interface {
@@ -286,9 +305,24 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		}
 	}
 
+	maxBounds := img.Bounds().Max
+	if maxBounds.Y > maxBounds.X {
+		sizeY := g.size.h
+		if maxBounds.Y < g.size.h {
+			sizeY = maxBounds.Y
+		}
+		img = imaging.Resize(img, 0, sizeY, imaging.Lanczos)
+	} else {
+		sizeX := g.size.w
+		if maxBounds.X < g.size.w {
+			sizeX = maxBounds.X
+		}
+		img = imaging.Resize(img, sizeX, 0, imaging.Lanczos)
+	}
+
 	if !pageData.ProminentCalculated {
 		// K=4 seems to work better than 3 for us
-		kmeans, err := prominentcolor.KmeansWithAll(4, img, prominentcolor.ArgumentDefault, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
+		kmeans, err := prominentcolor.KmeansWithAll(3, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
 		if err == nil {
 			pageData.ProminentColor = color.RGBA{
 				R: uint8(kmeans[0].Color.R),
@@ -406,6 +440,8 @@ func (g *Gomics) refresh() error {
 		return nil
 	}
 	g.needsRefresh = false
+
+	album.Pages[album.CurrentPage].imgData = nil
 
 	var currentImages []*ebiten.Image
 	var nextPage int
