@@ -52,10 +52,9 @@ func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
 
 	for index, v := range z.contents {
 		if fileName == v {
-			if index == z.currentHeaderIndex {
+			if index == z.currentHeaderIndex && z.currentRawImage != nil {
 				return z.currentRawImage, nil
-			}
-			if index < z.currentHeaderIndex {
+			} else if index <= z.currentHeaderIndex {
 				// we need to reload the rar file
 				z.reload()
 				break
