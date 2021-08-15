@@ -35,8 +35,9 @@ func buildDefaultConfig() error {
 	return nil
 }
 
-func readConfiguration(fileMD5 string) error {
+func readConfiguration(fileMD5 string) (Preferences, error) {
 	var err error
+	var preferences = NewPreferences()
 
 	globalConfigurationFile := getGlobalConfigurationFile()
 	_, err = os.Stat(globalConfigurationFile)
@@ -44,9 +45,8 @@ func readConfiguration(fileMD5 string) error {
 		log.Printf("Loading global configuration from %s\n", globalConfigurationFile)
 		fileData, err := ioutil.ReadFile(globalConfigurationFile)
 		if err != nil {
-			return err
+			return preferences, err
 		}
-
 		err = yaml.Unmarshal(fileData, &preferences)
 		if err != nil {
 			panic(err)
@@ -71,7 +71,7 @@ func readConfiguration(fileMD5 string) error {
 		log.Printf("Loading configuration from %s\n", configurationFile)
 		fileData, err := ioutil.ReadFile(configurationFile)
 		if err != nil {
-			return err
+			return preferences, err
 		}
 
 		err = yaml.Unmarshal(fileData, &album)
@@ -82,10 +82,10 @@ func readConfiguration(fileMD5 string) error {
 
 	log.Printf("Album has %d pages\n", len(album.Pages))
 
-	return err
+	return preferences, err
 }
 
-func saveConfiguration() error {
+func saveConfiguration(preferences Preferences) error {
 	d, err := yaml.Marshal(&album)
 	if err != nil {
 		return err

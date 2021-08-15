@@ -30,6 +30,7 @@ type PageData struct {
 	Top    int
 	Bottom int
 
+	scale   float64
 	imgData *ebiten.Image
 	mu      sync.Mutex
 }

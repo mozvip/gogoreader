@@ -28,13 +28,14 @@ type Gomics struct {
 	size            Size
 	needsRefresh    bool
 	infoDisplay     bool
+	preferences     Preferences
 }
 
 func (g *Gomics) InitFullScreen() {
-	ebiten.SetFullscreen(preferences.FullScreen)
-	if !preferences.FullScreen {
+	ebiten.SetFullscreen(g.preferences.FullScreen)
+	if !g.preferences.FullScreen {
 		// restore the size of the window
-		g.size = preferences.WindowedSize
+		g.size = g.preferences.WindowedSize
 	} else {
 		g.size.w, g.size.h = ebiten.ScreenSizeInFullscreen()
 	}
@@ -63,11 +64,38 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
-		preferences.Filter = ebiten.FilterLinear
+		g.preferences.Filter = imaging.Lanczos
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF2) {
-		preferences.Filter = ebiten.FilterNearest
+		g.preferences.Filter = imaging.CatmullRom
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
+		g.preferences.Filter = imaging.MitchellNetravali
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+		g.preferences.Filter = imaging.Linear
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		g.preferences.Filter = imaging.Box
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+		g.preferences.Filter = imaging.NearestNeighbor
+		g.needsRefresh = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+		g.preferences.Filter = imaging.CatmullRom
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyPageUp) {
@@ -112,12 +140,12 @@ func (g *Gomics) Update() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
 		// FIXME : move at the album level, not global
-		preferences.GrayScale = !preferences.GrayScale
+		g.preferences.GrayScale = !g.preferences.GrayScale
 		g.ClearCache()
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
-		preferences.RemoveBorders = !preferences.RemoveBorders
+		g.preferences.RemoveBorders = !g.preferences.RemoveBorders
 		g.ClearCache()
 	}
 
@@ -138,17 +166,17 @@ func (g *Gomics) Update() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF11) || inpututil.IsKeyJustPressed(ebiten.KeyF) {
 
-		if !preferences.FullScreen {
+		if !g.preferences.FullScreen {
 			// save the size of the window
-			preferences.WindowedSize.w, preferences.WindowedSize.h = ebiten.WindowSize()
+			g.preferences.WindowedSize.w, g.preferences.WindowedSize.h = ebiten.WindowSize()
 		}
-		preferences.FullScreen = !preferences.FullScreen
+		g.preferences.FullScreen = !g.preferences.FullScreen
 		g.InitFullScreen()
 		g.ClearCache()
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-		AppQuit()
+		AppQuit(g.preferences)
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyShift) {
@@ -181,34 +209,21 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 
 	tx := 0
 	ty := 0
-	scale := float64(1)
 
 	width, height := g.currentImage.Size()
 
-	xscale := float64(g.size.w) / float64(width)
-	yscale := float64(g.size.h) / float64(height)
-
-	if xscale < yscale {
-		scale = xscale
-		tx = 0
-		ty = int(((float64(g.size.h) - (float64(height) * scale)) / float64(2)))
-	} else {
-		scale = yscale
-		ty = 0
-		tx = int(((float64(g.size.w) - (float64(width) * scale)) / float64(2)))
-	}
+	tx = (g.size.w - width) / 2
+	ty = (g.size.h - height) / 2
 
 	op := &ebiten.DrawImageOptions{}
-	//op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64(tx), float64(ty))
-	op.Filter = preferences.Filter
 
 	// op.ColorM.ChangeHSV(1.0, 1.0, 1.0)
 
 	screen.DrawImage(g.currentImage, op)
 
 	if g.infoDisplay {
-		message := fmt.Sprintf("%d %%\nscale %.2f\nangle %f", album.CurrentPage*100/len(album.Pages), scale, album.Pages[album.CurrentPage].RotationAngle)
+		message := fmt.Sprintf("%d %%\nscale %.2f\nangle %f", album.CurrentPage*100/len(album.Pages), album.Pages[album.CurrentPage].scale, album.Pages[album.CurrentPage].RotationAngle)
 		ebitenutil.DebugPrint(screen, message)
 	}
 }
@@ -255,8 +270,8 @@ func (g *Gomics) PreviousPage() bool {
 	return false
 }
 
-func AppQuit() {
-	saveConfiguration()
+func AppQuit(preferences Preferences) {
+	saveConfiguration(preferences)
 	os.Exit(0)
 }
 
@@ -284,7 +299,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		}
 	}
 
-	if preferences.GrayScale {
+	if g.preferences.GrayScale {
 		img = imaging.Grayscale(img)
 	}
 
@@ -292,7 +307,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 	}
 
-	if preferences.RemoveBorders {
+	if g.preferences.RemoveBorders {
 		// colorcrop requires the image to implement this interface to work
 		_, ok := interface{}(img).(interface {
 			SubImage(r image.Rectangle) image.Image
@@ -311,13 +326,15 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		if maxBounds.Y < g.size.h {
 			sizeY = maxBounds.Y
 		}
-		img = imaging.Resize(img, 0, sizeY, imaging.Lanczos)
+		pageData.scale = float64(sizeY) / float64(maxBounds.Y)
+		img = imaging.Resize(img, 0, sizeY, g.preferences.Filter)
 	} else {
 		sizeX := g.size.w
 		if maxBounds.X < g.size.w {
 			sizeX = maxBounds.X
 		}
-		img = imaging.Resize(img, sizeX, 0, imaging.Lanczos)
+		pageData.scale = float64(sizeX) / float64(maxBounds.X)
+		img = imaging.Resize(img, sizeX, 0, g.preferences.Filter)
 	}
 
 	if !pageData.ProminentCalculated {
@@ -397,14 +414,15 @@ func main() {
 		panic(err)
 	}
 
-	err = readConfiguration(comicBook.GetMD5())
+	gomics := &Gomics{}
+
+	gomics.preferences, err = readConfiguration(comicBook.GetMD5())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	ebiten.SetWindowSize(preferences.WindowedSize.w, preferences.WindowedSize.h)
+	ebiten.SetWindowSize(gomics.preferences.WindowedSize.w, gomics.preferences.WindowedSize.h)
 	ebiten.SetWindowTitle(archiveFile)
-	gomics := &Gomics{}
 	gomics.size.w, gomics.size.h = ebiten.WindowSize()
 
 	ebiten.SetRunnableOnUnfocused(true)
@@ -415,7 +433,7 @@ func main() {
 	if err := ebiten.RunGame(gomics); err != nil {
 		panic(err)
 	}
-	AppQuit()
+	AppQuit(gomics.preferences)
 }
 
 func (g *Gomics) goTo(newImageIndex int) error {

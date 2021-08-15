@@ -3,22 +3,20 @@ package main
 import (
 	"path"
 
-	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/disintegration/imaging"
 )
 
 type Preferences struct {
 	FullScreen    bool
 	GrayScale     bool
 	RemoveBorders bool
-	Filter        ebiten.Filter
+	Filter        imaging.ResampleFilter
 	WindowedSize  Size
 }
 
-var preferences Preferences
-
 func NewPreferences() Preferences {
 	preferences := Preferences{}
-	preferences.Filter = ebiten.FilterLinear
+	preferences.Filter = imaging.Lanczos
 	return preferences
 }
 
