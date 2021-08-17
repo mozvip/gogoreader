@@ -23,6 +23,7 @@ type Album struct {
 	MD5         string
 	CurrentPage int
 	Pages       []PageData
+	GrayScale   bool
 }
 
 func (a *Album) GetConfigurationFile(configFolder string) string {

@@ -29,6 +29,8 @@ type Gomics struct {
 	needsRefresh    bool
 	infoDisplay     bool
 	preferences     Preferences
+
+	fatalErr error
 }
 
 func (g *Gomics) InitFullScreen() {
@@ -47,16 +49,22 @@ func (g *Gomics) toggleInfoDisplay() {
 
 func (g *Gomics) Update() error {
 
+	if g.fatalErr != nil {
+		return nil
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
 		g.toggleInfoDisplay()
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		album.Pages[album.CurrentPage].Top++
+		album.Pages[album.CurrentPage].Top += 2
+		g.needsRefresh = true
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyPageDown) {
-		album.Pages[album.CurrentPage].Bottom++
+	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
+		album.Pages[album.CurrentPage].Bottom += 2
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyPageDown) {
@@ -139,8 +147,7 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
-		// FIXME : move at the album level, not global
-		g.preferences.GrayScale = !g.preferences.GrayScale
+		album.GrayScale = !album.GrayScale
 		g.ClearCache()
 	}
 
@@ -161,6 +168,8 @@ func (g *Gomics) Update() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyKPDivide) {
 		album.Pages[album.CurrentPage].RotationAngle = 0
+		album.Pages[album.CurrentPage].Top = 0
+		album.Pages[album.CurrentPage].Bottom = 0
 		g.needsRefresh = true
 	}
 
@@ -195,6 +204,11 @@ func (g *Gomics) Update() error {
 
 func (g *Gomics) Draw(screen *ebiten.Image) {
 
+	if g.fatalErr != nil {
+		ebitenutil.DebugPrintAt(screen, g.fatalErr.Error(), 0, 45)
+		return
+	}
+
 	/*
 		w := g.size.w / 2
 		if len(g.prominentColors) > 1 {
@@ -223,7 +237,7 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.currentImage, op)
 
 	if g.infoDisplay {
-		message := fmt.Sprintf("%d %%\nscale %.2f\nangle %f", album.CurrentPage*100/len(album.Pages), album.Pages[album.CurrentPage].scale, album.Pages[album.CurrentPage].RotationAngle)
+		message := fmt.Sprintf("%0.2f TPS\n%d %%\nscale %.2f\nangle %f", ebiten.CurrentTPS(), album.CurrentPage*100/len(album.Pages), album.Pages[album.CurrentPage].scale, album.Pages[album.CurrentPage].RotationAngle)
 		ebitenutil.DebugPrint(screen, message)
 	}
 }
@@ -299,12 +313,12 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		}
 	}
 
-	if g.preferences.GrayScale {
+	if album.GrayScale {
 		img = imaging.Grayscale(img)
 	}
 
-	if pageData.RotationAngle != 0 {
-		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
+	if pageData.Bottom > 0 || pageData.Top > 0 {
+		img = imaging.Crop(img, image.Rectangle{Min: image.Pt(img.Bounds().Min.X, img.Bounds().Min.Y+pageData.Top), Max: image.Pt(img.Bounds().Max.X, img.Bounds().Max.Y-pageData.Bottom)})
 	}
 
 	if g.preferences.RemoveBorders {
@@ -315,9 +329,13 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		if ok {
 			img = colorcrop.Crop(
 				img,                            // for source image
-				color.RGBA{255, 255, 255, 255}, // crop white border
-				0.5)                            // with 50% thresold
+				color.RGBA{255, 255, 255, 255}, // crop white border : FIXME : identify image specific border color
+				0.3)                            // with 30% thresold
 		}
+	}
+
+	if pageData.RotationAngle != 0 {
+		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 	}
 
 	maxBounds := img.Bounds().Max
@@ -402,38 +420,51 @@ func main() {
 	log.Println("Opening file ", archiveFile)
 
 	var err error
-	log.Printf("Loading %s\n", archiveFile)
-	comicBook, err = files.FromFile(archiveFile)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-	defer comicBook.Close()
-	err = comicBook.Init()
-	if err != nil {
-		panic(err)
-	}
 
 	gomics := &Gomics{}
 
-	gomics.preferences, err = readConfiguration(comicBook.GetMD5())
+	log.Printf("Loading %s\n", archiveFile)
+	comicBook, err = files.FromFile(archiveFile)
 	if err != nil {
-		log.Fatal(err)
+		gomics.fatalErr = err
+	} else {
+		defer comicBook.Close()
+		err = comicBook.Init()
+		if err != nil {
+			gomics.fatalErr = err
+		}
+	}
+
+	ebiten.SetWindowTitle(archiveFile)
+
+	if gomics.fatalErr != nil {
+		gomics.preferences.FullScreen = false
+		gomics.preferences.WindowedSize.w = 500
+		gomics.preferences.WindowedSize.h = 100
+	} else {
+		gomics.preferences, err = readConfiguration(comicBook.GetMD5())
+		if err != nil {
+			gomics.fatalErr = err
+		} else {
+			ebiten.SetWindowResizable(true)
+		}
 	}
 
 	ebiten.SetWindowSize(gomics.preferences.WindowedSize.w, gomics.preferences.WindowedSize.h)
-	ebiten.SetWindowTitle(archiveFile)
 	gomics.size.w, gomics.size.h = ebiten.WindowSize()
-
 	ebiten.SetRunnableOnUnfocused(true)
-	ebiten.SetWindowResizable(true)
 	gomics.InitFullScreen()
 	gomics.needsRefresh = true
 
 	if err := ebiten.RunGame(gomics); err != nil {
 		panic(err)
 	}
-	AppQuit(gomics.preferences)
+
+	if gomics.fatalErr != nil {
+		os.Exit(-1)
+	} else {
+		AppQuit(gomics.preferences)
+	}
 }
 
 func (g *Gomics) goTo(newImageIndex int) error {

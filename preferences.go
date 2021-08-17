@@ -8,7 +8,6 @@ import (
 
 type Preferences struct {
 	FullScreen    bool
-	GrayScale     bool
 	RemoveBorders bool
 	Filter        imaging.ResampleFilter
 	WindowedSize  Size

@@ -42,7 +42,7 @@ func (p *PageData) RotateRight() {
 		p.Rotation = None
 	}
 	p.imgData = nil
-	p.ProminentCalculated = false
+	p.Reset()
 }
 
 func (p *PageData) RotateLeft() {
@@ -52,5 +52,12 @@ func (p *PageData) RotateLeft() {
 		p.Rotation = None
 	}
 	p.imgData = nil
+	p.Reset()
+}
+
+func (p *PageData) Reset() {
+	p.RotationAngle = 0
+	p.Top = 0
+	p.Bottom = 0
 	p.ProminentCalculated = false
 }
