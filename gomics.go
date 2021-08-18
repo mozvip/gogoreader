@@ -190,11 +190,22 @@ func (g *Gomics) Update() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyShift) {
 		if album.Pages[album.CurrentPage].Position == SinglePage && album.CurrentPage < len(album.Pages)-1 {
-			album.Pages[album.CurrentPage].Position = LeftPage
-			album.Pages[album.CurrentPage+1].Position = RightPage
+			// only if we have a visible page after the current one
+			for i := album.CurrentPage + 1; i < len(album.Pages); i++ {
+				if album.Pages[i].Visible {
+					album.Pages[album.CurrentPage].Position = LeftPage
+					album.Pages[i].Position = RightPage
+					break
+				}
+			}
 		} else if album.Pages[album.CurrentPage].Position == LeftPage {
 			album.Pages[album.CurrentPage].Position = SinglePage
-			album.Pages[album.CurrentPage+1].Position = SinglePage
+			for i := album.CurrentPage + 1; i < len(album.Pages); i++ {
+				if album.Pages[i].Visible {
+					album.Pages[i].Position = SinglePage
+					break
+				}
+			}
 		}
 		g.needsRefresh = true
 	}
@@ -209,17 +220,20 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	/*
-		w := g.size.w / 2
-		if len(g.prominentColors) > 1 {
-			left := image.Rectangle{Min: image.Pt(0, 0), Max: image.Pt(w, g.size.h)}
-			right := image.Rectangle{Min: image.Pt(w, 0), Max: image.Pt(g.size.w, g.size.h)}
-			screen.SubImage(left).Fill(g.prominentColors[0])
-			screen.SubImage(right).Fill(g.prominentColors[1])
+	if len(g.prominentColors) > 1 {
+		backw := g.size.w / len(g.prominentColors)
+		x := 0
+		for i := 0; i < len(g.prominentColors); i++ {
+			backImg := ebiten.NewImage(backw, g.size.h)
+			backImg.Fill(g.prominentColors[i])
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(x), float64(0))
+			screen.DrawImage(backImg, op)
+			x += backw
 		}
-	*/
-
-	screen.Fill(g.prominentColors[0])
+	} else {
+		screen.Fill(g.prominentColors[0])
+	}
 
 	tx := 0
 	ty := 0
@@ -483,6 +497,18 @@ func (g *Gomics) ClearCache() {
 	g.needsRefresh = true
 }
 
+func (g *Gomics) processPage(pageNum int, currentImages []*ebiten.Image, prominentColors []color.RGBA) ([]*ebiten.Image, []color.RGBA, error) {
+	pageData := &album.Pages[pageNum]
+	err := g.preparePage(pageData)
+	if err != nil {
+		return nil, nil, err
+	}
+	currentImages = append(currentImages, pageData.imgData)
+	prominentColors = append(prominentColors, pageData.ProminentColor)
+
+	return currentImages, prominentColors, nil
+}
+
 func (g *Gomics) refresh() error {
 
 	if !g.needsRefresh {
@@ -493,20 +519,23 @@ func (g *Gomics) refresh() error {
 	album.Pages[album.CurrentPage].imgData = nil
 
 	var currentImages []*ebiten.Image
-	var nextPage int
-
 	g.prominentColors = g.prominentColors[:0]
-	for index := album.CurrentPage; index < len(album.Pages); index++ {
-		pageData := &album.Pages[index]
-		err := g.preparePage(pageData)
-		if err != nil {
-			return err
-		}
-		currentImages = append(currentImages, pageData.imgData)
-		g.prominentColors = append(g.prominentColors, pageData.ProminentColor)
-		if pageData.Position != LeftPage {
-			nextPage = index + 1
-			break
+
+	var err error
+
+	currentImages, g.prominentColors, err = g.processPage(album.CurrentPage, currentImages, g.prominentColors)
+	if err != nil {
+		return err
+	}
+	if album.Pages[album.CurrentPage].Position == LeftPage {
+		for i := album.CurrentPage + 1; i < len(album.Pages); i++ {
+			if album.Pages[i].Visible && album.Pages[i].Position == RightPage {
+				currentImages, g.prominentColors, err = g.processPage(i, currentImages, g.prominentColors)
+				if err != nil {
+					return err
+				}
+				break
+			}
 		}
 	}
 
@@ -536,13 +565,17 @@ func (g *Gomics) refresh() error {
 		g.currentImage = currentImages[0]
 	}
 
-	// prepare next page in the background
-	if nextPage >= 0 && nextPage < len(album.Pages)-1 {
-		pageData := &album.Pages[nextPage]
-		go g.preparePage(pageData)
-		if pageData.Position == LeftPage {
-			pageData := &album.Pages[nextPage+1]
+	for i := album.CurrentPage + 1; i < len(album.Pages); i++ {
+		if album.Pages[i].Position == LeftPage || album.Pages[i].Position == SinglePage {
+			// prepare next page in the background
+			pageData := &album.Pages[i]
 			go g.preparePage(pageData)
+			if pageData.Position == LeftPage {
+				// FIXME: the +1 page may not be visible
+				pageData := &album.Pages[i+1]
+				go g.preparePage(pageData)
+			}
+			break
 		}
 	}
 
