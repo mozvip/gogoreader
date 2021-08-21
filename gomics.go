@@ -1,13 +1,10 @@
 package main
 
-//go:generate binclude
-
 import (
 	"bytes"
 	"fmt"
 	"image"
 	"image/color"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -17,9 +14,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/lu4p/binclude"
 	"github.com/mozvip/gomics/crop"
 	"github.com/mozvip/gomics/files"
+	"github.com/mozvip/gomics/resources"
+	"github.com/mozvip/gomics/ui"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 type Gomics struct {
@@ -29,9 +29,15 @@ type Gomics struct {
 	needsRefresh    bool
 	infoDisplay     bool
 	preferences     Preferences
+	Zoom            bool
 
 	fatalErr error
+
+	messages []ui.Message
 }
+
+var logFile *os.File
+var fontFace font.Face
 
 func (g *Gomics) InitFullScreen() {
 	ebiten.SetFullscreen(g.preferences.FullScreen)
@@ -124,6 +130,10 @@ func (g *Gomics) Update() error {
 		}
 	}
 
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.Zoom = !g.Zoom
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
 		album.Pages[album.CurrentPage].RotateLeft()
 		g.needsRefresh = true
@@ -141,6 +151,12 @@ func (g *Gomics) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.preferences.RemoveBorders = !g.preferences.RemoveBorders
 		g.ClearCache()
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		album.Reset()
+		g.ClearCache()
+		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
@@ -241,6 +257,12 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 		message := fmt.Sprintf("%0.2f TPS\n%d %%\nscale %.2f\nangle %f", ebiten.CurrentTPS(), album.CurrentPage*100/len(album.Pages), album.Pages[album.CurrentPage].scale, album.Pages[album.CurrentPage].RotationAngle)
 		ebitenutil.DebugPrint(screen, message)
 	}
+	/*
+		for i := 0; i < len(g.messages); i++ {
+			text.Draw(screen, g.messages[i].Message, font, 0, 0, color.White)
+		}
+	*/
+
 }
 
 func (g *Gomics) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -295,22 +317,26 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 	pageData.mu.Lock()
 	defer pageData.mu.Unlock()
 
-	if !pageData.Visible || pageData.imgData != nil {
+	if !pageData.Visible || pageData.ebitenImage != nil {
 		// image was already prepared
 		return nil
 	}
 
-	img, err := comicBook.ReadEntry(pageData.FileName)
-	if err != nil {
-		log.Printf("Error reading page %s - %s\n", pageData.FileName, err.Error())
-		return err
+	var err error
+	if pageData.rawImage == nil {
+		pageData.rawImage, err = comicBook.ReadEntry(pageData.FileName)
+		if err != nil {
+			log.Printf("Error reading page %s - %s\n", pageData.FileName, err.Error())
+			return err
+		}
 	}
 
+	img := pageData.rawImage
 	if pageData.Rotation != None {
 		if pageData.Rotation == Left {
-			img = imaging.Rotate90(img)
+			img = imaging.Rotate90(pageData.rawImage)
 		} else if pageData.Rotation == Right {
-			img = imaging.Rotate270(img)
+			img = imaging.Rotate270(pageData.rawImage)
 		}
 	}
 
@@ -370,8 +396,8 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 	}
 
 	if !pageData.ProminentCalculated {
-		// K=4 seems to work better than 3 for us
-		kmeans, err := prominentcolor.KmeansWithAll(4, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
+		// K=1 seems to work better than 3 for us
+		kmeans, err := prominentcolor.KmeansWithAll(1, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite})
 		if err == nil {
 			pageData.ProminentColor = color.RGBA{
 				R: uint8(kmeans[0].Color.R),
@@ -383,12 +409,10 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		pageData.ProminentCalculated = true
 	}
 
-	pageData.imgData = ebiten.NewImageFromImage(img)
+	pageData.ebitenImage = ebiten.NewImageFromImage(img)
 
 	return err
 }
-
-var logFile *os.File
 
 func init() {
 	var err error
@@ -408,27 +432,33 @@ func init() {
 		panic(err)
 	}
 	log.SetOutput(logFile)
+
+	tt, err := opentype.Parse(resources.Pacifico_ttf)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	const dpi = 72
+	fontFace, err = opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    24,
+		DPI:     dpi,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func main() {
 
-	binclude.Include("gomics.png")
-
 	if len(os.Args) < 2 {
 		log.Fatal("Need param")
 	}
-	file, errOpen := BinFS.Open("gomics.png")
-	if errOpen == nil {
-		iconData, err := ioutil.ReadAll(file)
-		if err == nil {
-			var icons []image.Image
-			image, _, _ := image.Decode(bytes.NewReader(iconData))
-			icons = append(icons, image)
-			ebiten.SetWindowIcon(icons)
-		}
-	} else {
-		panic("Unable to open gomics.png")
-	}
+
+	var icons []image.Image
+	image, _, _ := image.Decode(bytes.NewReader(resources.Gogoreader_png))
+	icons = append(icons, image)
+	ebiten.SetWindowIcon(icons)
 
 	archiveFile = os.Args[1]
 	log.Println("Opening file ", archiveFile)
@@ -492,7 +522,7 @@ func (g *Gomics) goTo(newImageIndex int) error {
 
 func (g *Gomics) ClearCache() {
 	for index := 0; index < len(album.Pages); index++ {
-		album.Pages[index].imgData = nil
+		album.Pages[index].ebitenImage = nil
 	}
 	g.needsRefresh = true
 }
@@ -503,7 +533,7 @@ func (g *Gomics) processPage(pageNum int, currentImages []*ebiten.Image, promine
 	if err != nil {
 		return nil, nil, err
 	}
-	currentImages = append(currentImages, pageData.imgData)
+	currentImages = append(currentImages, pageData.ebitenImage)
 	prominentColors = append(prominentColors, pageData.ProminentColor)
 
 	return currentImages, prominentColors, nil
@@ -516,7 +546,7 @@ func (g *Gomics) refresh() error {
 	}
 	g.needsRefresh = false
 
-	album.Pages[album.CurrentPage].imgData = nil
+	album.Pages[album.CurrentPage].ebitenImage = nil
 
 	var currentImages []*ebiten.Image
 	g.prominentColors = g.prominentColors[:0]
@@ -585,7 +615,7 @@ func (g *Gomics) refresh() error {
 	if album.CurrentPage > 1 {
 		// remove old images from cache
 		for index := 0; index < album.CurrentPage; index++ {
-			album.Pages[index].imgData = nil
+			album.Pages[index].ebitenImage = nil
 		}
 	}
 
