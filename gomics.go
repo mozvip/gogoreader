@@ -18,8 +18,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/lu4p/binclude"
+	"github.com/mozvip/gomics/crop"
 	"github.com/mozvip/gomics/files"
-	"github.com/nxshock/colorcrop"
 )
 
 type Gomics struct {
@@ -57,13 +57,25 @@ func (g *Gomics) Update() error {
 		g.toggleInfoDisplay()
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		album.Pages[album.CurrentPage].Top += 2
+	if inpututil.KeyPressDuration(ebiten.KeyUp) > 0 {
+		speed := 1
+		if inpututil.KeyPressDuration(ebiten.KeyUp) > 200 {
+			speed = 3
+		} else if inpututil.KeyPressDuration(ebiten.KeyUp) > 100 {
+			speed = 2
+		}
+		album.Pages[album.CurrentPage].Top += speed
 		g.needsRefresh = true
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		album.Pages[album.CurrentPage].Bottom += 2
+	if inpututil.KeyPressDuration(ebiten.KeyDown) > 0 {
+		speed := 1
+		if inpututil.KeyPressDuration(ebiten.KeyUp) > 200 {
+			speed = 3
+		} else if inpututil.KeyPressDuration(ebiten.KeyUp) > 100 {
+			speed = 2
+		}
+		album.Pages[album.CurrentPage].Bottom += speed
 		g.needsRefresh = true
 	}
 
@@ -72,37 +84,12 @@ func (g *Gomics) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
-		g.preferences.Filter = imaging.Lanczos
+		g.preferences.Filter = LANCZOS
 		g.needsRefresh = true
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF2) {
-		g.preferences.Filter = imaging.CatmullRom
-		g.needsRefresh = true
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
-		g.preferences.Filter = imaging.MitchellNetravali
-		g.needsRefresh = true
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
-		g.preferences.Filter = imaging.Linear
-		g.needsRefresh = true
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
-		g.preferences.Filter = imaging.Box
-		g.needsRefresh = true
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
-		g.preferences.Filter = imaging.NearestNeighbor
-		g.needsRefresh = true
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
-		g.preferences.Filter = imaging.CatmullRom
+		g.preferences.Filter = NEAREST_NEIGHBOR
 		g.needsRefresh = true
 	}
 
@@ -336,15 +323,16 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 	}
 
 	if g.preferences.RemoveBorders {
+
+		cropRect := crop.CropBorders(img)
 		// colorcrop requires the image to implement this interface to work
 		_, ok := interface{}(img).(interface {
 			SubImage(r image.Rectangle) image.Image
 		})
 		if ok {
-			img = colorcrop.Crop(
-				img,                            // for source image
-				color.RGBA{255, 255, 255, 255}, // crop white border : FIXME : identify image specific border color
-				0.3)                            // with 30% thresold
+			img = img.(interface {
+				SubImage(r image.Rectangle) image.Image
+			}).SubImage(cropRect)
 		}
 	}
 
@@ -352,26 +340,38 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 	}
 
+	var imageFilter imaging.ResampleFilter
+	if g.preferences.Filter == LANCZOS {
+		imageFilter = imaging.Lanczos
+	} else {
+		imageFilter = imaging.NearestNeighbor
+	}
+
 	maxBounds := img.Bounds().Max
+	ratio := float64(maxBounds.X) / float64(maxBounds.Y)
 	if maxBounds.Y > maxBounds.X {
 		sizeY := g.size.h
 		if maxBounds.Y < g.size.h {
 			sizeY = maxBounds.Y
 		}
 		pageData.scale = float64(sizeY) / float64(maxBounds.Y)
-		img = imaging.Resize(img, 0, sizeY, g.preferences.Filter)
+		img = imaging.Resize(img, 0, sizeY, imageFilter)
 	} else {
 		sizeX := g.size.w
 		if maxBounds.X < g.size.w {
 			sizeX = maxBounds.X
 		}
+		sizeY := float64(sizeX) * ratio
+		if sizeY > float64(g.size.h) {
+			sizeX = int(float64(g.size.h) * ratio)
+		}
 		pageData.scale = float64(sizeX) / float64(maxBounds.X)
-		img = imaging.Resize(img, sizeX, 0, g.preferences.Filter)
+		img = imaging.Resize(img, sizeX, 0, imageFilter)
 	}
 
 	if !pageData.ProminentCalculated {
 		// K=4 seems to work better than 3 for us
-		kmeans, err := prominentcolor.KmeansWithAll(3, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
+		kmeans, err := prominentcolor.KmeansWithAll(4, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite, prominentcolor.MaskBlack})
 		if err == nil {
 			pageData.ProminentColor = color.RGBA{
 				R: uint8(kmeans[0].Color.R),
@@ -571,9 +571,12 @@ func (g *Gomics) refresh() error {
 			pageData := &album.Pages[i]
 			go g.preparePage(pageData)
 			if pageData.Position == LeftPage {
-				// FIXME: the +1 page may not be visible
-				pageData := &album.Pages[i+1]
-				go g.preparePage(pageData)
+				for j := i + 1; j < len(album.Pages); j++ {
+					if album.Pages[j].Visible {
+						go g.preparePage(&album.Pages[j])
+						break
+					}
+				}
 			}
 			break
 		}

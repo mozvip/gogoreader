@@ -2,7 +2,6 @@ package files
 
 import (
 	"archive/zip"
-	"bytes"
 	"crypto/md5"
 	"fmt"
 	"image"
@@ -25,10 +24,6 @@ type ComicBookArchive interface {
 	ReadEntry(fileName string) (image.Image, error)
 	GetMD5() string
 	Init() error
-}
-
-func CreateImage(fileName string, data []byte) (image.Image, error) {
-	return CreateImageFromReader(fileName, bytes.NewReader(data))
 }
 
 func CreateImageFromReader(fileName string, reader io.Reader) (image.Image, error) {
@@ -73,11 +68,12 @@ func FromFile(fileName string) (ComicBookArchive, error) {
 
 	log.Printf("File MD5 is %s\n", fileMD5)
 
-	if strings.HasSuffix(fileName, ".pdf") {
+	lower := strings.ToLower(fileName)
+	if strings.HasSuffix(lower, ".pdf") {
 		return newPDFComicBook(fileMD5, fileName)
-	} else if strings.HasSuffix(fileName, ".cbz") || strings.HasSuffix(fileName, ".zip") {
+	} else if strings.HasSuffix(lower, ".cbz") || strings.HasSuffix(lower, ".zip") {
 		return newZippedComicBook(fileMD5, fileName)
-	} else if strings.HasSuffix(fileName, ".cbr") || strings.HasSuffix(fileName, ".rar") {
+	} else if strings.HasSuffix(lower, ".cbr") || strings.HasSuffix(lower, ".rar") {
 		return newRaredComicBook(fileMD5, fileName)
 	}
 	return nil, fmt.Errorf("unable to determine type of archive for file %s", fileName)

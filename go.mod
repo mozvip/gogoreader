@@ -12,7 +12,6 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nwaples/rardecode v1.1.1
-	github.com/nxshock/colorcrop v0.0.0-20210323183931-9fb5e5006ee3
 	github.com/oliamb/cutter v0.2.2 // indirect
 	github.com/unidoc/unipdf/v3 v3.26.1
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect

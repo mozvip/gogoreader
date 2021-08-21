@@ -16,6 +16,9 @@ func buildDefaultConfig() error {
 		log.Fatal(e)
 	}
 	for _, fileName := range content {
+		if strings.HasPrefix(fileName, "__MACOSX") {
+			continue
+		}
 		ext := strings.ToLower(fileName)
 		if strings.HasPrefix(fileName, "PDF Page") || strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp") || strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") {
 			album.Pages = append(album.Pages, PageData{

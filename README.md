@@ -6,11 +6,15 @@ A simple & minimalist cbr / cbz / pdf comics reader, written in go, using the Eb
 
 F / F11 : toggle fullscreen
 
-B : toggle automatic white border removal
+F1 : Select Lanczos resize filter (default)
+
+F2 : Select Nearest Neighbor resize filter (faster)
+
+B : toggle automatic border removal
 
 Left Shift : Toggle between simple page / double page for the current position
 
-G : toogle between color and gray scale
+G : toogle between color and gray scale for the whole album
 
 Keypad Add: increment page angle
 

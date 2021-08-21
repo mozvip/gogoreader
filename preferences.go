@@ -2,20 +2,25 @@ package main
 
 import (
 	"path"
+)
 
-	"github.com/disintegration/imaging"
+type ImageFilter uint
+
+const (
+	LANCZOS          ImageFilter = 0
+	NEAREST_NEIGHBOR ImageFilter = 1
 )
 
 type Preferences struct {
 	FullScreen    bool
 	RemoveBorders bool
-	Filter        imaging.ResampleFilter
+	Filter        ImageFilter
 	WindowedSize  Size
 }
 
 func NewPreferences() Preferences {
 	preferences := Preferences{}
-	preferences.Filter = imaging.Lanczos
+	preferences.Filter = LANCZOS
 	return preferences
 }
 
