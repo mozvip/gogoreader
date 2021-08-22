@@ -12,9 +12,15 @@ F2 : Select Nearest Neighbor resize filter (faster)
 
 B : toggle automatic border removal
 
+L : Rotate Left
+
+R : Rotate Right
+
 Left Shift : Toggle between simple page / double page for the current position
 
 G : toogle between color and gray scale for the whole album
+
+Home : Reset album settings
 
 Keypad Add: increment page angle
 

@@ -30,6 +30,8 @@ type PageData struct {
 
 	Top    int
 	Bottom int
+	Left   int
+	Right  int
 
 	scale       float64
 	rawImage    image.Image
@@ -59,7 +61,10 @@ func (p *PageData) RotateLeft() {
 
 func (p *PageData) Reset() {
 	p.RotationAngle = 0
+	p.Rotation = None
 	p.Top = 0
 	p.Bottom = 0
+	p.Left = 0
+	p.Right = 0
 	p.ProminentCalculated = false
 }

@@ -53,6 +53,21 @@ func (g *Gomics) toggleInfoDisplay() {
 	g.infoDisplay = !g.infoDisplay
 }
 
+func (g *Gomics) crop(key ebiten.Key) int {
+	speed := 0
+	if inpututil.KeyPressDuration(key) > 0 {
+		speed = 1
+		if inpututil.KeyPressDuration(key) > 200 {
+			speed = 3
+		} else if inpututil.KeyPressDuration(key) > 100 {
+			speed = 2
+		}
+		g.needsRefresh = true
+	}
+
+	return speed
+}
+
 func (g *Gomics) Update() error {
 
 	if g.fatalErr != nil {
@@ -63,27 +78,10 @@ func (g *Gomics) Update() error {
 		g.toggleInfoDisplay()
 	}
 
-	if inpututil.KeyPressDuration(ebiten.KeyUp) > 0 {
-		speed := 1
-		if inpututil.KeyPressDuration(ebiten.KeyUp) > 200 {
-			speed = 3
-		} else if inpututil.KeyPressDuration(ebiten.KeyUp) > 100 {
-			speed = 2
-		}
-		album.Pages[album.CurrentPage].Top += speed
-		g.needsRefresh = true
-	}
-
-	if inpututil.KeyPressDuration(ebiten.KeyDown) > 0 {
-		speed := 1
-		if inpututil.KeyPressDuration(ebiten.KeyUp) > 200 {
-			speed = 3
-		} else if inpututil.KeyPressDuration(ebiten.KeyUp) > 100 {
-			speed = 2
-		}
-		album.Pages[album.CurrentPage].Bottom += speed
-		g.needsRefresh = true
-	}
+	album.Pages[album.CurrentPage].Top += g.crop(ebiten.KeyUp)
+	album.Pages[album.CurrentPage].Bottom += g.crop(ebiten.KeyDown)
+	album.Pages[album.CurrentPage].Left += g.crop(ebiten.KeyLeft)
+	album.Pages[album.CurrentPage].Right += g.crop(ebiten.KeyRight)
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyPageDown) {
 		g.NextPage()
@@ -134,11 +132,11 @@ func (g *Gomics) Update() error {
 		g.Zoom = !g.Zoom
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyL) {
 		album.Pages[album.CurrentPage].RotateLeft()
 		g.needsRefresh = true
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		album.Pages[album.CurrentPage].RotateRight()
 		g.needsRefresh = true
 	}
@@ -153,7 +151,7 @@ func (g *Gomics) Update() error {
 		g.ClearCache()
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyHome) {
 		album.Reset()
 		g.ClearCache()
 		g.needsRefresh = true
@@ -257,11 +255,12 @@ func (g *Gomics) Draw(screen *ebiten.Image) {
 		message := fmt.Sprintf("%0.2f TPS\n%d %%\nscale %.2f\nangle %f", ebiten.CurrentTPS(), album.CurrentPage*100/len(album.Pages), album.Pages[album.CurrentPage].scale, album.Pages[album.CurrentPage].RotationAngle)
 		ebitenutil.DebugPrint(screen, message)
 	}
-	/*
-		for i := 0; i < len(g.messages); i++ {
-			text.Draw(screen, g.messages[i].Message, font, 0, 0, color.White)
-		}
-	*/
+
+	y := 0
+	for i := 0; i < len(g.messages); i++ {
+		g.messages[i].Draw(screen, fontFace, 0, y)
+		y += 40
+	}
 
 }
 
@@ -344,14 +343,17 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		img = imaging.Grayscale(img)
 	}
 
-	if pageData.Bottom > 0 || pageData.Top > 0 {
-		img = imaging.Crop(img, image.Rectangle{Min: image.Pt(img.Bounds().Min.X, img.Bounds().Min.Y+pageData.Top), Max: image.Pt(img.Bounds().Max.X, img.Bounds().Max.Y-pageData.Bottom)})
+	if pageData.Left > 0 || pageData.Right > 0 || pageData.Bottom > 0 || pageData.Top > 0 {
+		img = imaging.Crop(img, image.Rectangle{Min: image.Pt(img.Bounds().Min.X+pageData.Left, img.Bounds().Min.Y+pageData.Top), Max: image.Pt(img.Bounds().Max.X-pageData.Right, img.Bounds().Max.Y-pageData.Bottom)})
+	}
+
+	if pageData.RotationAngle != 0 {
+		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 	}
 
 	if g.preferences.RemoveBorders {
-
 		cropRect := crop.CropBorders(img)
-		// colorcrop requires the image to implement this interface to work
+		// cropping requires the image to implement this interface
 		_, ok := interface{}(img).(interface {
 			SubImage(r image.Rectangle) image.Image
 		})
@@ -360,10 +362,6 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 				SubImage(r image.Rectangle) image.Image
 			}).SubImage(cropRect)
 		}
-	}
-
-	if pageData.RotationAngle != 0 {
-		img = imaging.Rotate(img, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 	}
 
 	var imageFilter imaging.ResampleFilter
@@ -397,7 +395,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 
 	if !pageData.ProminentCalculated {
 		// K=1 seems to work better than 3 for us
-		kmeans, err := prominentcolor.KmeansWithAll(1, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite})
+		kmeans, err := prominentcolor.KmeansWithAll(3, img, prominentcolor.ArgumentDefault|prominentcolor.ArgumentNoCropping, prominentcolor.DefaultSize, []prominentcolor.ColorBackgroundMask{prominentcolor.MaskWhite})
 		if err == nil {
 			pageData.ProminentColor = color.RGBA{
 				R: uint8(kmeans[0].Color.R),

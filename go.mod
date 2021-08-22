@@ -6,6 +6,7 @@ require (
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210715014612-ab6297867137 // indirect
+	github.com/hajimehoshi/ebiten v1.12.12 // indirect
 	github.com/hajimehoshi/ebiten/v2 v2.1.3
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
