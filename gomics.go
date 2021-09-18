@@ -84,12 +84,12 @@ func (g *Gomics) Update() error {
 	}
 
 	if g.win.JustPressed(pixelgl.KeyF1) {
-		g.preferences.Filter = LANCZOS
+		g.win.SetSmooth(true)
 		g.needsRefresh = true
 	}
 
 	if g.win.JustPressed(pixelgl.KeyF2) {
-		g.preferences.Filter = NEAREST_NEIGHBOR
+		g.win.SetSmooth(false)
 		g.needsRefresh = true
 	}
 
@@ -235,7 +235,6 @@ func (g *Gomics) Draw() {
 	tx := (g.size.X - totalWidth*scale) / 2.0
 	ty := (g.size.Y - maxHeight*scale) / 2.0
 
-	// FIXME x for several pics
 	center := g.win.Bounds().Center()
 	positions := make([]pixel.Vec, 0, len(g.imageSprites))
 	startX := center.X - (totalWidth / 2.0)
@@ -495,6 +494,7 @@ func run() {
 		panic(err)
 	}
 
+	g.win.SetSmooth(true)
 	g.InitFullScreen()
 	g.preparePage()
 
