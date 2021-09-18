@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
 	"sort"
 	"strings"
 
+	"github.com/faiface/pixel"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,19 +23,26 @@ func buildDefaultConfig() error {
 		}
 		ext := strings.ToLower(fileName)
 		if strings.HasPrefix(fileName, "PDF Page") || strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp") || strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") {
-			album.Pages = append(album.Pages, PageData{
+			album.Images = append(album.Images, &ImageData{
 				FileName: fileName,
 				Visible:  true,
 			})
 		}
 	}
-	if len(album.Pages) == 0 {
-		log.Fatal("No image found in comicBook")
+	if len(album.Images) == 0 {
+		return errors.New("no image found in comicBook")
 	}
 
-	sort.Slice(album.Pages, func(i, j int) bool {
-		return album.Pages[i].FileName < album.Pages[j].FileName
+	// sort images by their filename
+	sort.Slice(album.Images, func(i, j int) bool {
+		return album.Images[i].FileName < album.Images[j].FileName
 	})
+
+	// create a default page for each of these images
+	album.Pages = make([]*PageData, len(album.Images))
+	for i, img := range album.Images {
+		album.Pages[i] = &PageData{Images: []*ImageData{img}}
+	}
 
 	return nil
 }
@@ -55,14 +64,14 @@ func readConfiguration(fileMD5 string) (Preferences, error) {
 			panic(err)
 		}
 	}
-	if preferences.WindowedSize.w == 0 {
-		preferences.WindowedSize = Size{
-			w: 600,
-			h: 800,
+	if preferences.WindowedSize.X == 0 {
+		preferences.WindowedSize = pixel.Vec{
+			X: 800,
+			Y: 600,
 		}
 	}
 
-	album.Pages = make([]PageData, 0)
+	album.Pages = make([]*PageData, 0)
 	album.MD5 = fileMD5
 
 	configurationFile := album.GetConfigurationFile(configFolder)

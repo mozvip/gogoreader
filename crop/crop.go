@@ -2,6 +2,8 @@ package crop
 
 import (
 	"image"
+	"sync"
+	"sync/atomic"
 )
 
 // comparator is a function that returns a difference between two colors in
@@ -36,111 +38,141 @@ func max(a, b uint32) uint32 {
 	return b
 }
 
-func CropBorders(img image.Image) image.Rectangle {
-	return CropBordersWithComparator(img, CmpRGBComponents)
+func CropBorders(img image.Image, rect *image.Rectangle) {
+	CropBordersWithComparator(img, rect, CmpRGBComponents)
 }
 
-func avgColorForLine(img image.Image, y int) (r, g, b uint32) {
+func avgColorForLine(img image.Image, y int64, minX int64, maxX int64) (r, g, b uint32) {
 	var sumR, sumG, sumB uint32
 	var c uint32
-	rectangle := img.Bounds()
-	for x := rectangle.Min.X; x < rectangle.Max.X; x++ {
-		r, g, b, _ := img.At(x, y).RGBA()
+	for x := minX; x < maxX; x++ {
+		r, g, b, _ := img.At(int(x), int(y)).RGBA()
 		sumR += r
 		sumG += g
 		sumB += b
 		c++
 	}
+	if c == 0 {
+		return 0, 0, 0
+	}
 	return sumR / c, sumG / c, sumB / c
 }
 
-func avgColorForColumn(img image.Image, x int) (r, g, b uint32) {
+func avgColorForColumn(img image.Image, x, minY, maxY int64) (r, g, b uint32) {
 	var sumR, sumG, sumB uint32
 	var c uint32
-	rectangle := img.Bounds()
-	for y := rectangle.Min.Y; y < rectangle.Max.Y; y++ {
-		r, g, b, _ := img.At(x, y).RGBA()
+	for y := minY; y < maxY; y++ {
+		r, g, b, _ := img.At(int(x), int(y)).RGBA()
 		sumR += r
 		sumG += g
 		sumB += b
 		c++
 	}
+	if c == 0 {
+		return 0, 0, 0
+	}
 	return sumR / c, sumG / c, sumB / c
 }
 
-func CropBordersWithComparator(img image.Image, comparator comparator) image.Rectangle {
-	rectangle := img.Bounds()
-
+func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparator comparator) {
 	threshold := 0.10
 	countThreshold := 0.02
 
-	r, g, b := avgColorForLine(img, 0)
-	maxBad := int(float64(rectangle.Max.X-rectangle.Min.X) * countThreshold)
-	badCount := 0
-TopLoop:
-	for y := rectangle.Min.Y; y < rectangle.Max.Y; y++ {
-		rectangle.Min.Y = y
-		badCount = 0
-		for x := rectangle.Min.X; x < rectangle.Max.X; x++ {
-			r1, g1, b1, _ := img.At(x, y).RGBA()
-			if comparator(r1, g1, b1, r, g, b) > threshold {
-				badCount++
-				if badCount > maxBad {
-					break TopLoop
+	var wg sync.WaitGroup
+
+	rectMinY := int64(rect.Min.Y)
+	rectMaxY := int64(rect.Max.Y)
+	rectMinX := int64(rect.Min.X)
+	rectMaxX := int64(rect.Max.X)
+
+	const precision = 4
+
+	maxBadForX := int(float64(rect.Max.X-rect.Min.X) * countThreshold)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		r, g, b := avgColorForLine(img, atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMaxX))
+		for minY := atomic.LoadInt64(&rectMinY); minY < atomic.LoadInt64(&rectMaxY); minY++ {
+			badCount := 0
+			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += precision {
+				r1, g1, b1, _ := img.At(int(x), int(minY)).RGBA()
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForX {
+						return
+					}
 				}
 			}
+			atomic.AddInt64(&rectMinY, 1)
 		}
-	}
+	}()
 
-	r, g, b = avgColorForLine(img, rectangle.Max.Y-1)
-BottomLoop:
-	for y := rectangle.Max.Y - 1; y >= rectangle.Min.Y; y-- {
-		rectangle.Max.Y = y + 1
-		badCount = 0
-		for x := rectangle.Min.X; x < rectangle.Max.X; x++ {
-			r1, g1, b1, _ := img.At(x, y).RGBA()
-			if comparator(r1, g1, b1, r, g, b) > threshold {
-				badCount++
-				if badCount > maxBad {
-					break BottomLoop
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		r, g, b := avgColorForLine(img, atomic.LoadInt64(&rectMaxY)-1, atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMaxX)-1)
+		for maxY := atomic.LoadInt64(&rectMaxY) - 1; maxY > atomic.LoadInt64(&rectMinY); maxY-- {
+			badCount := 0
+			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += precision {
+				r1, g1, b1, _ := img.At(int(x), int(maxY)).RGBA()
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForX {
+						return
+					}
 				}
 			}
+			atomic.AddInt64(&rectMaxY, -1)
 		}
-	}
+	}()
 
-	maxBad = int(float64(rectangle.Max.Y-rectangle.Min.Y) * countThreshold)
-	r, g, b = avgColorForColumn(img, 0)
-LeftLoop:
-	for x := rectangle.Min.X; x < rectangle.Max.X; x++ {
-		badCount = 0
-		rectangle.Min.X = x
-		for y := rectangle.Min.Y; y < rectangle.Max.Y; y++ {
-			r1, g1, b1, _ := img.At(x, y).RGBA()
-			if comparator(r1, g1, b1, r, g, b) > threshold {
-				badCount++
-				if badCount > maxBad {
-					break LeftLoop
+	maxBadForY := int(float64(rect.Max.Y-rect.Min.Y) * countThreshold)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		r, g, b := avgColorForColumn(img, atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMaxY))
+		for minX := int(atomic.LoadInt64(&rectMinX)); minX < int(atomic.LoadInt64(&rectMaxX)); minX++ {
+			badCount := 0
+			for y := rect.Min.Y; y < rect.Max.Y; y += precision {
+				r1, g1, b1, _ := img.At(minX, y).RGBA()
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForY {
+						return
+					}
 				}
 			}
+			atomic.AddInt64(&rectMinX, 1)
 		}
+	}()
 
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-	r, g, b = avgColorForColumn(img, rectangle.Max.X-1)
-RightLoop:
-	for x := rectangle.Max.X - 1; x >= rectangle.Min.X; x-- {
-		badCount = 0
-		rectangle.Max.X = x + 1
-		for y := rectangle.Min.Y; y < rectangle.Max.Y; y++ {
-			r1, g1, b1, _ := img.At(x, y).RGBA()
-			if comparator(r1, g1, b1, r, g, b) > threshold {
-				badCount++
-				if badCount > maxBad {
-					break RightLoop
+		r, g, b := avgColorForColumn(img, atomic.LoadInt64(&rectMaxX)-1, atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMaxY)-1)
+		for maxX := atomic.LoadInt64(&rectMaxX) - 1; maxX > atomic.LoadInt64(&rectMinX); maxX-- {
+			badCount := 0
+			for y := atomic.LoadInt64(&rectMinY); y < atomic.LoadInt64(&rectMaxY); y += precision {
+				r1, g1, b1, _ := img.At(int(maxX), int(y)).RGBA()
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForY {
+						return
+					}
 				}
 			}
+			atomic.AddInt64(&rectMaxX, -1)
 		}
-	}
+	}()
 
-	return rectangle
+	wg.Wait()
+
+	rect.Min.X = int(rectMinX)
+	rect.Max.X = int(rectMaxX)
+	rect.Min.Y = int(rectMinY)
+	rect.Max.Y = int(rectMaxY)
 }

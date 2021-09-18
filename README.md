@@ -20,7 +20,7 @@ Left Shift : Toggle between simple page / double page for the current position
 
 G : toogle between color and gray scale for the whole album
 
-Home : Reset album settings
+BackSpace : Reset album settings
 
 Keypad Add: increment page angle
 

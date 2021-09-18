@@ -1,70 +1,52 @@
 package main
 
-import (
-	"image"
-	"image/color"
-	"sync"
+import "github.com/faiface/pixel"
 
-	"github.com/hajimehoshi/ebiten/v2"
-)
-
-type PagePreferences struct {
-	AlbumPreferencesID uint
-
-	Rotation Rotation
-	Position Position
+type ImageData struct {
+	FileName string
 	Visible  bool
-
-	Top    int
-	Bottom int
-}
-
-type PageData struct {
-	FileName            string
-	Rotation            Rotation
-	RotationAngle       float64
-	Position            Position
-	Visible             bool
-	ProminentColor      color.RGBA
-	ProminentCalculated bool
+	Rotation Rotation
 
 	Top    int
 	Bottom int
 	Left   int
 	Right  int
+}
 
-	scale       float64
-	rawImage    image.Image
-	ebitenImage *ebiten.Image
-	mu          sync.Mutex
+type PageData struct {
+	Images           []*ImageData
+	RotationAngle    float64
+	BackgroundColors []pixel.RGBA
 }
 
 func (p *PageData) RotateRight() {
-	if p.Rotation == None {
-		p.Rotation = Right
-	} else if p.Rotation == Left {
-		p.Rotation = None
+	for i := 0; i < len(p.Images); i++ {
+		if p.Images[i].Rotation == None {
+			p.Images[i].Rotation = Right
+		} else if p.Images[i].Rotation == Left {
+			p.Images[i].Rotation = None
+		}
 	}
-	p.ebitenImage = nil
 	p.Reset()
 }
 
 func (p *PageData) RotateLeft() {
-	if p.Rotation == None {
-		p.Rotation = Left
-	} else if p.Rotation == Right {
-		p.Rotation = None
+	for i := 0; i < len(p.Images); i++ {
+		if p.Images[i].Rotation == None {
+			p.Images[i].Rotation = Left
+		} else if p.Images[i].Rotation == Right {
+			p.Images[i].Rotation = None
+		}
 	}
-	p.ebitenImage = nil
 	p.Reset()
 }
 
 func (p *PageData) Reset() {
-	p.RotationAngle = 0
-	p.Rotation = None
-	p.Top = 0
-	p.Bottom = 0
-	p.Left = 0
-	p.Right = 0
-	p.ProminentCalculated = false
+	for i := 0; i < len(p.Images); i++ {
+		p.Images[i].Top = 0
+		p.Images[i].Bottom = 0
+		p.Images[i].Left = 0
+		p.Images[i].Right = 0
+	}
+
 }

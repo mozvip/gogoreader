@@ -3,6 +3,7 @@ package files
 import (
 	"image"
 	"io"
+	"sync"
 
 	"github.com/nwaples/rardecode"
 )
@@ -15,6 +16,7 @@ type RaredComicBook struct {
 	currentHeaderIndex int
 
 	currentRawImage image.Image
+	mu              sync.Mutex
 }
 
 func (z *RaredComicBook) Close() {
@@ -49,6 +51,9 @@ func (z *RaredComicBook) reload() error {
 }
 
 func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
+
+	z.mu.Lock()
+	defer z.mu.Unlock()
 
 	for index, v := range z.contents {
 		if fileName == v {

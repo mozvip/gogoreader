@@ -10,20 +10,16 @@ const (
 	Right
 )
 
-type Position uint8
-
-const (
-	SinglePage Position = iota
-	LeftPage
-	RightPage
-)
-
 type Album struct {
-	Path        string
-	MD5         string
-	CurrentPage int
-	Pages       []PageData
-	GrayScale   bool
+	MD5              string
+	CurrentPageIndex int
+	Pages            []*PageData
+	Images           []*ImageData `json:"-"`
+	GrayScale        bool
+}
+
+func (a *Album) GetCurrentPage() *PageData {
+	return a.Pages[a.CurrentPageIndex]
 }
 
 func (a *Album) GetConfigurationFile(configFolder string) string {
@@ -32,11 +28,12 @@ func (a *Album) GetConfigurationFile(configFolder string) string {
 
 func (a *Album) Reset() {
 	for i := 0; i < len(a.Pages); i++ {
-		a.Pages[i].Visible = true
-		a.Pages[i].Bottom = 0
-		a.Pages[i].Top = 0
-		a.Pages[i].Rotation = None
-		a.Pages[i].Position = SinglePage
+		a.Pages[i].Reset()
+		a.Pages[i].BackgroundColors = nil
 	}
-	a.CurrentPage = 0
+	for _, i := range a.Images {
+		i.Visible = true
+		i.Rotation = None
+	}
+	a.CurrentPageIndex = 0
 }

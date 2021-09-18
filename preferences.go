@@ -2,6 +2,8 @@ package main
 
 import (
 	"path"
+
+	"github.com/faiface/pixel"
 )
 
 type ImageFilter uint
@@ -15,7 +17,7 @@ type Preferences struct {
 	FullScreen    bool
 	RemoveBorders bool
 	Filter        ImageFilter
-	WindowedSize  Size
+	WindowedSize  pixel.Vec
 }
 
 func NewPreferences() Preferences {
