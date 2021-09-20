@@ -1,6 +1,10 @@
 package main
 
-import "github.com/faiface/pixel"
+import (
+	"sync"
+
+	"github.com/faiface/pixel"
+)
 
 type ImageData struct {
 	FileName string
@@ -14,9 +18,13 @@ type ImageData struct {
 }
 
 type PageData struct {
+	mu sync.Mutex
+
 	Images           []*ImageData
 	RotationAngle    float64
 	BackgroundColors []pixel.RGBA
+
+	imageSprites []*pixel.Sprite
 }
 
 func (p *PageData) RotateRight() {

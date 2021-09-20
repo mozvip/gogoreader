@@ -26,13 +26,26 @@ type ComicBookArchive interface {
 	Init() error
 }
 
+var imageCache map[string]image.Image
+
 func CreateImageFromReader(fileName string, reader io.Reader) (image.Image, error) {
-	if strings.HasSuffix(fileName, "webp") {
-		return webp.Decode(reader)
-	} else {
-		img, _, e := image.Decode(reader)
-		return img, e
+	if imageCache == nil {
+		imageCache = make(map[string]image.Image)
 	}
+	img, hasKey := imageCache[fileName]
+	if hasKey {
+		return img, nil
+	}
+	var e error
+	if strings.HasSuffix(fileName, "webp") {
+		img, e = webp.Decode(reader)
+	} else {
+		img, _, e = image.Decode(reader)
+	}
+	if e == nil {
+		imageCache[fileName] = img
+	}
+	return img, e
 }
 
 func newZippedComicBook(MD5 string, fileName string) (*ZippedComicBook, error) {

@@ -2,12 +2,14 @@ package gogoreader
 
 import (
 	"image"
+	"math"
 
 	"github.com/disintegration/imaging"
+	"github.com/faiface/pixel"
 )
 
 func AverageColor(image image.Image) (r, g, b uint8) {
-	temp := imaging.Resize(image, 20, 0, imaging.Lanczos)
+	temp := imaging.Resize(image, 20, 0, imaging.NearestNeighbor)
 	step := 1
 	var count, sr, sg, sb uint32
 	tempRect := temp.Bounds()
@@ -30,40 +32,40 @@ func AverageColor(image image.Image) (r, g, b uint8) {
 
 }
 
-func ProminentColor(image image.Image) (r, g, b uint8) {
-	//xresize := 40
-	step := 4
+func ProminentColor(pictureData *pixel.PictureData, rect image.Rectangle) pixel.RGBA {
+	step := 3
 
-	//temp := imaging.Resize(image, xresize, 0, imaging.Linear)
-	colorsCount := make(map[uint32]int)
-	tempRect := image.Bounds()
-	currentMax := 0
-	prominentColor := uint32(0)
-	for x := tempRect.Min.X; x < tempRect.Max.X; x += step {
-		for y := tempRect.Min.Y; y < tempRect.Max.Y; y += step {
-			r, g, b, a := image.At(x, y).RGBA()
-			if a == 0 {
-				continue
-			}
-			r = r >> 8
-			g = g >> 8
-			b = b >> 8
-			if r == 0xFF && g == 0xFF && b == 0xFF {
+	colorsCount := make(map[pixel.RGBA]uint)
+	currentMax := uint(0)
+	prominentColor := pixel.RGB(0, 0, 0)
+	for x := rect.Min.X; x < rect.Max.X; x += step {
+		for y := rect.Min.Y; y < rect.Max.Y; y += step {
+			rgba := pictureData.Color(pixel.Vec{X: float64(x), Y: float64(y)})
+			r, g, b := rgba.R, rgba.G, rgba.B
+			if r > 0.95 && g > 0.95 && b > 0.95 {
 				// ignore white pixels
 				continue
 			}
-			color := ((r & 0xFE) << 16) | ((g & 0xFE) << 8) | (b & 0xFE)
+			if r < 0.05 && g < 0.05 && b < 0.05 {
+				// ignore black pixels
+				continue
+			}
+			// remove precision
+			r = math.Round(r*10) / 10
+			g = math.Round(g*10) / 10
+			b = math.Round(b*10) / 10
+			color := pixel.RGB(r, g, b)
 			count, hasKey := colorsCount[color]
 			if hasKey {
 				colorsCount[color] = count + 1
-				if colorsCount[color] > currentMax {
-					prominentColor = color
-					currentMax = colorsCount[color]
-				}
 			} else {
 				colorsCount[color] = 1
 			}
+			if colorsCount[color] > currentMax {
+				prominentColor = color
+				currentMax = colorsCount[color]
+			}
 		}
 	}
-	return uint8(prominentColor >> 16 & 0xff), uint8(prominentColor >> 8 & 0xff), uint8(prominentColor & 0xff)
+	return prominentColor
 }
