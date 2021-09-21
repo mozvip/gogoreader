@@ -1,29 +1,27 @@
 package crop
 
 import (
-	"image"
 	"sync"
 	"sync/atomic"
+
+	"github.com/faiface/pixel"
 )
 
 // comparator is a function that returns a difference between two colors in
 // range 0.0..1.0 (0.0 - same colors, 1.0 - totally different colors).
-type comparator func(r1, g1, b1, r2, g2, b2 uint32) float64
+type comparator func(r1, g1, b1, r2, g2, b2 float64) float64
 
 // CmpRGBComponents returns RGB components difference of two colors.
-func CmpRGBComponents(r1, g1, b1, r2, g2, b2 uint32) float64 {
+func CmpRGBComponents(r1, g1, b1, r2, g2, b2 float64) float64 {
 	const maxDiff = 765.0 // Difference between black and white colors
 
-	r1, g1, b1 = r1>>8, g1>>8, b1>>8
-	r2, g2, b2 = r2>>8, g2>>8, b2>>8
-
-	return float64((max(r1, r2)-min(r1, r2))+
-		(max(g1, g2)-min(g1, g2))+
-		(max(b1, b2)-min(b1, b2))) / maxDiff
+	return (max(r1, r2) - min(r1, r2)) +
+		(max(g1, g2) - min(g1, g2)) +
+		(max(b1, b2)-min(b1, b2))/maxDiff
 }
 
 // min is minimum of two uint32
-func min(a, b uint32) uint32 {
+func min(a, b float64) float64 {
 	if a < b {
 		return a
 	}
@@ -31,22 +29,23 @@ func min(a, b uint32) uint32 {
 }
 
 // max is maximum of two uint32
-func max(a, b uint32) uint32 {
+func max(a, b float64) float64 {
 	if a > b {
 		return a
 	}
 	return b
 }
 
-func CropBorders(img image.Image, rect *image.Rectangle) {
+func CropBorders(img *pixel.PictureData, rect *pixel.Rect) {
 	CropBordersWithComparator(img, rect, CmpRGBComponents)
 }
 
-func avgColorForLine(img image.Image, y int64, minX int64, maxX int64) (r, g, b uint32) {
-	var sumR, sumG, sumB uint32
-	var c uint32
+func avgColorForLine(img *pixel.PictureData, y float64, minX float64, maxX float64) (r, g, b float64) {
+	var sumR, sumG, sumB float64
+	var c float64
 	for x := minX; x < maxX; x++ {
-		r, g, b, _ := img.At(int(x), int(y)).RGBA()
+		color := img.Color(pixel.V(x, y))
+		r, g, b := color.R, color.G, color.B
 		sumR += r
 		sumG += g
 		sumB += b
@@ -58,11 +57,12 @@ func avgColorForLine(img image.Image, y int64, minX int64, maxX int64) (r, g, b 
 	return sumR / c, sumG / c, sumB / c
 }
 
-func avgColorForColumn(img image.Image, x, minY, maxY int64) (r, g, b uint32) {
-	var sumR, sumG, sumB uint32
-	var c uint32
+func avgColorForColumn(img *pixel.PictureData, x, minY, maxY float64) (r, g, b float64) {
+	var sumR, sumG, sumB float64
+	var c float64
 	for y := minY; y < maxY; y++ {
-		r, g, b, _ := img.At(int(x), int(y)).RGBA()
+		color := img.Color(pixel.V(x, y))
+		r, g, b := color.R, color.G, color.B
 		sumR += r
 		sumG += g
 		sumB += b
@@ -74,7 +74,7 @@ func avgColorForColumn(img image.Image, x, minY, maxY int64) (r, g, b uint32) {
 	return sumR / c, sumG / c, sumB / c
 }
 
-func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparator comparator) {
+func CropBordersWithComparator(img *pixel.PictureData, rect *pixel.Rect, comparator comparator) {
 	threshold := 0.10
 	countThreshold := 0.01
 
@@ -85,18 +85,19 @@ func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparato
 	rectMinX := int64(rect.Min.X)
 	rectMaxX := int64(rect.Max.X)
 
-	const precision = 4
+	const step = 4
 
-	maxBadForX := int(float64(rect.Max.X-rect.Min.X) * countThreshold)
+	maxBadForX := rect.W() * countThreshold
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		r, g, b := avgColorForLine(img, atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMaxX))
+		r, g, b := avgColorForLine(img, float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMaxX)))
 		for minY := atomic.LoadInt64(&rectMinY); minY < atomic.LoadInt64(&rectMaxY); minY++ {
-			badCount := 0
-			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += precision {
-				r1, g1, b1, _ := img.At(int(x), int(minY)).RGBA()
+			badCount := 0.0
+			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += step {
+				color := img.Color(pixel.V(float64(x), float64(minY)))
+				r1, g1, b1 := color.R, color.G, color.B
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForX {
@@ -112,11 +113,12 @@ func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparato
 	go func() {
 		defer wg.Done()
 
-		r, g, b := avgColorForLine(img, atomic.LoadInt64(&rectMaxY)-1, atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMaxX)-1)
+		r, g, b := avgColorForLine(img, float64(atomic.LoadInt64(&rectMaxY)-1), float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMaxX)-1))
 		for maxY := atomic.LoadInt64(&rectMaxY) - 1; maxY > atomic.LoadInt64(&rectMinY); maxY-- {
-			badCount := 0
-			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += precision {
-				r1, g1, b1, _ := img.At(int(x), int(maxY)).RGBA()
+			badCount := 0.0
+			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += step {
+				color := img.Color(pixel.V(float64(x), float64(maxY)))
+				r1, g1, b1 := color.R, color.G, color.B
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForX {
@@ -128,16 +130,18 @@ func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparato
 		}
 	}()
 
-	maxBadForY := int(float64(rect.Max.Y-rect.Min.Y) * countThreshold)
+	maxBadForY := (rect.Max.Y - rect.Min.Y) * countThreshold
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		r, g, b := avgColorForColumn(img, atomic.LoadInt64(&rectMinX), atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMaxY))
+		r, g, b := avgColorForColumn(img, float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMaxY)))
 		for minX := int(atomic.LoadInt64(&rectMinX)); minX < int(atomic.LoadInt64(&rectMaxX)); minX++ {
-			badCount := 0
-			for y := rect.Min.Y; y < rect.Max.Y; y += precision {
-				r1, g1, b1, _ := img.At(minX, y).RGBA()
+			badCount := 0.0
+			for y := rect.Min.Y; y < rect.Max.Y; y += step {
+				color := img.Color(pixel.V(float64(minX), y))
+				r1, g1, b1 := color.R, color.G, color.B
+
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForY {
@@ -153,11 +157,12 @@ func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparato
 	go func() {
 		defer wg.Done()
 
-		r, g, b := avgColorForColumn(img, atomic.LoadInt64(&rectMaxX)-1, atomic.LoadInt64(&rectMinY), atomic.LoadInt64(&rectMaxY)-1)
+		r, g, b := avgColorForColumn(img, float64(atomic.LoadInt64(&rectMaxX)-1), float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMaxY)-1))
 		for maxX := atomic.LoadInt64(&rectMaxX) - 1; maxX > atomic.LoadInt64(&rectMinX); maxX-- {
-			badCount := 0
-			for y := atomic.LoadInt64(&rectMinY); y < atomic.LoadInt64(&rectMaxY); y += precision {
-				r1, g1, b1, _ := img.At(int(maxX), int(y)).RGBA()
+			badCount := 0.0
+			for y := atomic.LoadInt64(&rectMinY); y < atomic.LoadInt64(&rectMaxY); y += step {
+				color := img.Color(pixel.V(float64(maxX), float64(y)))
+				r1, g1, b1 := color.R, color.G, color.B
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForY {
@@ -171,8 +176,8 @@ func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparato
 
 	wg.Wait()
 
-	rect.Min.X = int(rectMinX)
-	rect.Max.X = int(rectMaxX)
-	rect.Min.Y = int(rectMinY)
-	rect.Max.Y = int(rectMaxY)
+	rect.Min.X = float64(rectMinX)
+	rect.Max.X = float64(rectMaxX)
+	rect.Min.Y = float64(rectMinY)
+	rect.Max.Y = float64(rectMaxY)
 }

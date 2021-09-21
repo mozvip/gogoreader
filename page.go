@@ -11,10 +11,10 @@ type ImageData struct {
 	Visible  bool
 	Rotation Rotation
 
-	Top    int
-	Bottom int
-	Left   int
-	Right  int
+	Top    float64
+	Bottom float64
+	Left   float64
+	Right  float64
 }
 
 type PageData struct {

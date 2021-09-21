@@ -57,13 +57,13 @@ func (g *Gomics) toggleInfoDisplay() {
 	g.infoDisplay = !g.infoDisplay
 }
 
-func (g *Gomics) crop(key pixelgl.Button) int {
-	speed := 0
+func (g *Gomics) crop(key pixelgl.Button) float64 {
+	speed := 0.0
 	if g.win.Pressed(key) {
-		speed = 1
+		speed = 1.0
 	}
 	if g.win.Repeated(key) {
-		speed = 2
+		speed = 2.0
 	}
 	g.needsRefresh = speed > 0
 	return speed
@@ -330,7 +330,7 @@ type SubImager interface {
 	SubImage(r image.Rectangle) image.Image
 }
 
-func backgroundColor(pictureData *pixel.PictureData, rect image.Rectangle) pixel.RGBA {
+func backgroundColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
 	return gogoreader.ProminentColor(pictureData, rect)
 }
 
@@ -371,36 +371,35 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 			rawImage = imaging.Rotate(rawImage, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
 		}
 
-		cropRect := rawImage.Bounds()
+		pictureData := pixel.PictureDataFromImage(rawImage)
+
+		cropRect := pictureData.Bounds()
 		if imgData.Left > 0 || imgData.Right > 0 || imgData.Bottom > 0 || imgData.Top > 0 {
-			cropRect = image.Rect(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Top, cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Bottom)
+			cropRect = pixel.Rect{Min: pixel.V(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Bottom), Max: pixel.V(cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Top)}
 		}
 
 		if g.preferences.RemoveBorders {
-			crop.CropBorders(rawImage, &cropRect)
+			crop.CropBorders(pictureData, &cropRect)
 		}
 
-		w := cropRect.Dx() / 5
+		w := cropRect.W() / 5
 
-		pictureData := pixel.PictureDataFromImage(rawImage)
 		if index == 0 {
-			rect := image.Rectangle{Min: image.Point{X: cropRect.Min.X, Y: cropRect.Min.Y}, Max: image.Point{X: cropRect.Min.X + w, Y: cropRect.Max.Y}}
+			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
 			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 		if index == len(pageData.Images)-1 {
-			rect := image.Rectangle{Min: image.Point{X: cropRect.Max.X - w, Y: cropRect.Min.Y}, Max: image.Point{X: cropRect.Max.X, Y: cropRect.Max.Y}}
+			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X, cropRect.Max.Y)}
 			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 
-		iw, ih := float64(cropRect.Dx()), float64(cropRect.Dy())
+		iw, ih := float64(cropRect.W()), float64(cropRect.H())
 		totalWidth += iw
 		if ih > h {
 			h = ih
 		}
 
-		// FIXME : properly convert image.Rectangle to pixel.Rect
-		max := pictureData.Bounds().Max
-		sprite := pixel.NewSprite(pictureData, pixel.Rect{Min: pixel.Vec{X: float64(cropRect.Min.X), Y: max.Y - float64(cropRect.Max.Y)}, Max: pixel.Vec{X: float64(cropRect.Max.X), Y: max.Y - float64(cropRect.Min.Y)}})
+		sprite := pixel.NewSprite(pictureData, cropRect)
 		pageData.imageSprites = append(pageData.imageSprites, sprite)
 	}
 
