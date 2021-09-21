@@ -21,9 +21,7 @@ import (
 	"github.com/mozvip/gomics/gogoreader"
 	"github.com/mozvip/gomics/resources"
 	"github.com/mozvip/gomics/ui"
-	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/font/opentype"
 )
 
 type Gomics struct {
@@ -43,13 +41,14 @@ type Gomics struct {
 }
 
 var logFile *os.File
-var fontFace font.Face
+var fontAtlas *text.Atlas
 
 func (g *Gomics) InitFullScreen() {
 	if g.preferences.FullScreen {
 		g.win.SetMonitor(pixelgl.PrimaryMonitor())
 	} else {
 		g.win.SetMonitor(nil)
+		g.win.SetBounds(pixel.Rect{pixel.Vec{0, 0}, pixel.Vec{g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y}})
 	}
 	g.size = g.win.Bounds().Max
 }
@@ -121,6 +120,7 @@ func (g *Gomics) Update() error {
 
 	if g.win.JustPressed(pixelgl.MouseButtonLeft) {
 		g.Zoom = !g.Zoom
+		g.ZoomPositionX = g.win.Bounds().Center().X
 	}
 
 	if g.win.JustPressed(pixelgl.KeyL) {
@@ -162,9 +162,8 @@ func (g *Gomics) Update() error {
 	}
 
 	if g.win.JustPressed(pixelgl.KeyF11) || g.win.JustPressed(pixelgl.KeyF) {
-
 		if !g.preferences.FullScreen {
-			// save the size of the window
+			// save the current size of the window
 			g.preferences.WindowedSize = g.win.Bounds().Size()
 		}
 		g.preferences.FullScreen = !g.preferences.FullScreen
@@ -216,9 +215,8 @@ func (g *Gomics) drawBackGround() {
 
 func (g *Gomics) Draw() {
 
-	basicAtlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
-	basicTxt := text.New(pixel.V(0, 45), basicAtlas)
 	if g.fatalErr != nil {
+		basicTxt := text.New(pixel.V(1, 10), fontAtlas)
 		fmt.Fprintln(basicTxt, g.fatalErr.Error())
 		return
 	}
@@ -249,6 +247,22 @@ func (g *Gomics) Draw() {
 			}
 	*/
 
+	if g.Zoom {
+		mousePosition := g.win.MousePosition()
+
+		// FIXME : use a percentage of the total height instead of absolute 100
+		if mousePosition.Y < 100 {
+			if g.ZoomPositionY >= g.size.Y-maxHeight {
+				g.ZoomPositionY -= 15
+			}
+		}
+		if mousePosition.Y > (g.size.Y - 100) {
+			if g.ZoomPositionY <= maxHeight {
+				g.ZoomPositionY += 15
+			}
+		}
+	}
+
 	center := g.win.Bounds().Center()
 	positions := make([]pixel.Vec, 0, len(pageData.imageSprites))
 	startX := center.X - (totalWidth / 2.0)
@@ -261,15 +275,23 @@ func (g *Gomics) Draw() {
 		matrix := pixel.IM.Moved(positions[index])
 		if g.Zoom {
 			scale = g.win.Bounds().W() / totalWidth
+			matrix = matrix.Scaled(pixel.V(g.ZoomPositionX, g.ZoomPositionY), scale)
+		} else {
+			matrix = matrix.Scaled(g.win.Bounds().Center(), scale)
 		}
-		matrix = matrix.Scaled(g.win.Bounds().Center(), scale)
 		sprite.Draw(g.win, matrix)
 	}
 
 	if g.infoDisplay {
+		textScale := 2.0
+		infoText := text.New(pixel.V(0, g.size.Y-fontAtlas.LineHeight()*textScale), fontAtlas)
 		// message := fmt.Sprintf("%0.2f TPS\n%d %%\nscale %.2f\nangle %f", ebiten.CurrentTPS(), album.CurrentPageIndex*100/len(album.Pages), album.GetCurrentPage().scale, album.GetCurrentPage().RotationAngle)
-		message := fmt.Sprintf("Page %d (%d %%)\nScreen Size %f x %f\nImage Size %f x %f\nscale %.2f", album.CurrentPageIndex, album.CurrentPageIndex*100/len(album.Pages), g.size.X, g.size.Y, totalWidth, maxHeight, scale)
-		fmt.Fprintln(basicTxt, message)
+		message := fmt.Sprintf("Page %d (%d %%)\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentPageIndex, album.CurrentPageIndex*100/len(album.Pages), g.size.X, g.size.Y, totalWidth, maxHeight, scale)
+		fmt.Fprintln(infoText, message)
+		if g.Zoom {
+			fmt.Fprintf(infoText, "Zoom position : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
+		}
+		infoText.Draw(g.win, pixel.IM.Scaled(infoText.Orig, textScale))
 	}
 
 	y := 0
@@ -404,21 +426,6 @@ func init() {
 	}
 	log.SetOutput(logFile)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Llongfile)
-
-	tt, err := opentype.Parse(resources.Pacifico_ttf)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	const dpi = 72
-	fontFace, err = opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    24,
-		DPI:     dpi,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		panic(err)
-	}
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -492,6 +499,8 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
+
+	fontAtlas = text.NewAtlas(basicfont.Face7x13, text.ASCII)
 
 	g.win.SetSmooth(true)
 	g.InitFullScreen()

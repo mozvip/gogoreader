@@ -76,7 +76,7 @@ func avgColorForColumn(img image.Image, x, minY, maxY int64) (r, g, b uint32) {
 
 func CropBordersWithComparator(img image.Image, rect *image.Rectangle, comparator comparator) {
 	threshold := 0.10
-	countThreshold := 0.02
+	countThreshold := 0.01
 
 	var wg sync.WaitGroup
 
