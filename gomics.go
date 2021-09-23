@@ -40,7 +40,6 @@ type Gomics struct {
 	win      *pixelgl.Window
 }
 
-var logFile *os.File
 var fontAtlas *text.Atlas
 
 func (g *Gomics) InitFullScreen() {
@@ -419,6 +418,7 @@ func init() {
 		panic(err)
 	}
 
+	var logFile *os.File
 	logFile, err = os.OpenFile(path.Join(configFolder, "gogoreader.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)
@@ -490,7 +490,7 @@ func run() {
 		Title:     archiveFile,
 		Bounds:    pixel.R(0, 0, g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y),
 		Monitor:   monitor,
-		Resizable: true,
+		Resizable: g.fatalErr == nil,
 		Icon:      icons,
 		VSync:     true,
 	}
@@ -501,14 +501,26 @@ func run() {
 
 	fontAtlas = text.NewAtlas(basicfont.Face7x13, text.ASCII)
 
-	g.win.SetSmooth(true)
-	g.InitFullScreen()
-	g.refresh()
+	if g.fatalErr != nil {
+		g.win.SetTitle("Error")
+		textScale := 2.0
+		errorText := text.New(pixel.V(10, 0+fontAtlas.LineHeight()*textScale), fontAtlas)
+		fmt.Fprintf(errorText, "%s", g.fatalErr.Error())
+		for !g.win.Closed() {
+			errorText.Draw(g.win, pixel.IM.Scaled(errorText.Orig, textScale))
+			g.win.Update()
+		}
 
-	for !g.win.Closed() {
-		g.Update()
-		g.Draw()
-		g.win.Update()
+	} else {
+		g.win.SetSmooth(true)
+		g.InitFullScreen()
+		g.refresh()
+
+		for !g.win.Closed() {
+			g.Update()
+			g.Draw()
+			g.win.Update()
+		}
 	}
 
 	if g.fatalErr != nil {
