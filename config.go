@@ -5,7 +5,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/faiface/pixel"
@@ -35,7 +37,16 @@ func buildDefaultConfig() error {
 
 	// sort images by their filename
 	sort.Slice(album.Images, func(i, j int) bool {
-		return album.Images[i].FileName < album.Images[j].FileName
+		// extract number for file name
+		var r = regexp.MustCompile("\\d+")
+		var imatch = r.FindString(album.Images[i].FileName)
+		var jmatch = r.FindString(album.Images[j].FileName)
+		if imatch != "" && jmatch != "" {
+			var numsI, _ = strconv.Atoi(imatch)
+			var numsJ, _ = strconv.Atoi(jmatch)
+			return numsI < numsJ
+		}
+		return i < j
 	})
 
 	// create a default page for each of these images
