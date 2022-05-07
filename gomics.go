@@ -42,14 +42,17 @@ type Gomics struct {
 
 var fontAtlas *text.Atlas
 
-func (g *Gomics) InitFullScreen() {
+func (g *Gomics) ToggleFullScreen() {
 	if g.preferences.FullScreen {
+
 		g.win.SetMonitor(pixelgl.PrimaryMonitor())
+		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(pixelgl.PrimaryMonitor().Size())})
 	} else {
 		g.win.SetMonitor(nil)
-		g.win.SetBounds(pixel.Rect{pixel.Vec{0, 0}, pixel.Vec{g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y}})
+		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y)})
 	}
 	g.size = g.win.Bounds().Max
+	g.needsRefresh = true
 }
 
 func (g *Gomics) toggleInfoDisplay() {
@@ -145,12 +148,12 @@ func (g *Gomics) Update() error {
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyKPSubtract) {
+	if g.win.JustPressed(pixelgl.KeyMinus) {
 		album.GetCurrentPage().RotationAngle -= 0.05
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyKPAdd) {
+	if g.win.JustPressed(pixelgl.KeyPeriod) {
 		album.GetCurrentPage().RotationAngle += 0.05
 		g.needsRefresh = true
 	}
@@ -166,7 +169,7 @@ func (g *Gomics) Update() error {
 			g.preferences.WindowedSize = g.win.Bounds().Size()
 		}
 		g.preferences.FullScreen = !g.preferences.FullScreen
-		g.InitFullScreen()
+		g.ToggleFullScreen()
 	}
 
 	if g.win.JustPressed(pixelgl.KeyEscape) || g.win.JustPressed(pixelgl.KeyQ) {
@@ -179,16 +182,15 @@ func (g *Gomics) Update() error {
 			album.GetCurrentPage().Images = append(album.GetCurrentPage().Images, album.Pages[album.CurrentPageIndex+1].Images...)
 			album.Pages = append(album.Pages[:album.CurrentPageIndex+1], album.Pages[album.CurrentPageIndex+2:]...)
 		} else if len(album.GetCurrentPage().Images) > 1 {
-			// FIXME: broken
+			// create a new page with only the second image
 			newPage := PageData{Images: album.GetCurrentPage().Images[1:]}
+			// only keep the first image on the current page
 			album.GetCurrentPage().Images = album.GetCurrentPage().Images[:1]
 
-			var newPages = make([]*PageData, 0, len(album.Pages)+1)
-			copy(newPages, album.Pages[:album.CurrentPageIndex])
-			newPages = append(newPages, &newPage)
-			newPages = append(newPages, album.Pages[album.CurrentPageIndex+1:]...)
-
-			album.Pages = newPages
+			// allocate one more page
+			album.Pages = append(album.Pages[:album.CurrentPageIndex+1], album.Pages[album.CurrentPageIndex:]...)
+			// next page is the new page
+			album.Pages[album.CurrentPageIndex+1] = &newPage
 		}
 		g.needsRefresh = true
 	}
@@ -213,12 +215,6 @@ func (g *Gomics) drawBackGround() {
 }
 
 func (g *Gomics) Draw() {
-
-	if g.fatalErr != nil {
-		basicTxt := text.New(pixel.V(1, 10), fontAtlas)
-		fmt.Fprintln(basicTxt, g.fatalErr.Error())
-		return
-	}
 
 	// draw background
 	g.drawBackGround()
@@ -282,14 +278,35 @@ func (g *Gomics) Draw() {
 	}
 
 	if g.infoDisplay {
+
 		textScale := 2.0
-		infoText := text.New(pixel.V(0, g.size.Y-fontAtlas.LineHeight()*textScale), fontAtlas)
-		// message := fmt.Sprintf("%0.2f TPS\n%d %%\nscale %.2f\nangle %f", ebiten.CurrentTPS(), album.CurrentPageIndex*100/len(album.Pages), album.GetCurrentPage().scale, album.GetCurrentPage().RotationAngle)
-		message := fmt.Sprintf("Page %d (%d %%)\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentPageIndex, album.CurrentPageIndex*100/len(album.Pages), g.size.X, g.size.Y, totalWidth, maxHeight, scale)
+		infoText := text.New(pixel.V(5, g.size.Y-fontAtlas.LineHeight()*textScale), fontAtlas)
+		var fileNames string
+		for i, image := range album.GetCurrentPage().Images {
+			if i > 0 {
+				fileNames = fileNames + " "
+			}
+			fileNames = fileNames + image.FileName
+		}
+
+		message := fmt.Sprintf("Page %d (%d %%)\nFiles names\t%s\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentPageIndex, album.CurrentPageIndex*100/len(album.Pages), fileNames, g.size.X, g.size.Y, totalWidth, maxHeight, scale)
 		fmt.Fprintln(infoText, message)
+		// fmt.Fprintf(infoText, "Rotation : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
 		if g.Zoom {
 			fmt.Fprintf(infoText, "Zoom position : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
 		}
+
+		infoBoxW := infoText.Bounds().Max.X
+		infoBoxH := infoText.Bounds().Max.Y
+
+		imd := imdraw.New(nil)
+		imd.Color = pixel.RGBA{0.2, 0.2, 0.2, 0.5}
+		imd.Push(pixel.V(0, g.size.Y))
+		imd.Push(pixel.V(infoBoxW, g.size.Y-infoBoxH))
+		imd.Rectangle(0)
+
+		imd.Draw(g.win)
+
 		infoText.Draw(g.win, pixel.IM.Scaled(infoText.Orig, textScale))
 	}
 
@@ -383,12 +400,14 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 
 		w := cropRect.W() / 5
 
+		offsetW := cropRect.W() / 20
+
 		if index == 0 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
+			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X+offsetW, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
 			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 		if index == len(pageData.Images)-1 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X, cropRect.Max.Y)}
+			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X-offsetW, cropRect.Max.Y)}
 			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 
@@ -406,8 +425,6 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 }
 
 func init() {
-	var err error
-
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
 		panic(err)
@@ -419,12 +436,16 @@ func init() {
 	}
 
 	var logFile *os.File
-	logFile, err = os.OpenFile(path.Join(configFolder, "gogoreader.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	logFileName := path.Join(configFolder, "gogoreader.log")
+	logFile, err = os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		panic(err)
+		log.Printf("Unable to open log file %s for writing, will log to console instead\n", logFileName)
+	} else {
+		// setup logging to file
+		log.Printf("Log directed to file :  %s\n", logFileName)
+		log.SetOutput(logFile)
+		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Llongfile)
 	}
-	log.SetOutput(logFile)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Llongfile)
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -432,20 +453,6 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 func run() {
 
 	var err error
-
-	if len(os.Args) < 2 {
-		log.Fatal("Need param")
-	}
-
-	flag.Parse()
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
 
 	archiveFile = flag.Args()[0]
 	log.Println("Opening file ", archiveFile)
@@ -502,10 +509,11 @@ func run() {
 	fontAtlas = text.NewAtlas(basicfont.Face7x13, text.ASCII)
 
 	if g.fatalErr != nil {
-		g.win.SetTitle("Error")
-		textScale := 2.0
+		g.win.SetTitle(fmt.Sprintf("Error - Unable to display %s", archiveFile))
+		textScale := 1.0
 		errorText := text.New(pixel.V(10, 0+fontAtlas.LineHeight()*textScale), fontAtlas)
-		fmt.Fprintf(errorText, "%s", g.fatalErr.Error())
+		fmt.Fprintf(errorText, "%s\n%s", archiveFile, g.fatalErr.Error())
+		g.win.SetBounds(errorText.Bounds())
 		for !g.win.Closed() {
 			errorText.Draw(g.win, pixel.IM.Scaled(errorText.Orig, textScale))
 			g.win.Update()
@@ -513,7 +521,7 @@ func run() {
 
 	} else {
 		g.win.SetSmooth(true)
-		g.InitFullScreen()
+		g.ToggleFullScreen()
 		g.refresh()
 
 		for !g.win.Closed() {
@@ -531,6 +539,24 @@ func run() {
 }
 
 func main() {
+
+	if len(os.Args) < 2 {
+		log.Fatal("Missing command line parameter : file name")
+	}
+
+	flag.Parse()
+
+	log.Println(flag.Args())
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	pixelgl.Run(run)
 }
 

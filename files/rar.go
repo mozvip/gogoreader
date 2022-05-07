@@ -83,6 +83,15 @@ func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
 	return nil, err
 }
 
+func IsValidRar(file string) bool {
+	archive, err := rardecode.OpenReader(file, "")
+	if err != nil {
+		return false
+	}
+	defer archive.Close()
+	return true
+}
+
 func (z *RaredComicBook) Init() error {
 	var err error
 	var header *rardecode.FileHeader

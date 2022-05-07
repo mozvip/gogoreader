@@ -82,12 +82,12 @@ func FromFile(fileName string) (ComicBookArchive, error) {
 	log.Printf("File MD5 is %s\n", fileMD5)
 
 	lower := strings.ToLower(fileName)
-	if strings.HasSuffix(lower, ".pdf") {
-		return newPDFComicBook(fileMD5, fileName)
-	} else if strings.HasSuffix(lower, ".cbz") || strings.HasSuffix(lower, ".zip") {
-		return newZippedComicBook(fileMD5, fileName)
-	} else if strings.HasSuffix(lower, ".cbr") || strings.HasSuffix(lower, ".rar") {
+
+	if IsValidRar(fileName) {
 		return newRaredComicBook(fileMD5, fileName)
+	} else if strings.HasSuffix(lower, ".pdf") {
+		return newPDFComicBook(fileMD5, fileName)
+	} else {
+		return newZippedComicBook(fileMD5, fileName)
 	}
-	return nil, fmt.Errorf("unable to determine type of archive for file %s", fileName)
 }

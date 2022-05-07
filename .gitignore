@@ -2,4 +2,4 @@ dist/
 *.profile
 .idea/*
 *.syso
-./*.exe
+gomics.exe
