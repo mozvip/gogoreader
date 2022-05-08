@@ -24,7 +24,7 @@ import (
 	"golang.org/x/image/font/basicfont"
 )
 
-type Gomics struct {
+type GogoReader struct {
 	size         pixel.Vec
 	needsRefresh bool
 	infoDisplay  bool
@@ -42,7 +42,7 @@ type Gomics struct {
 
 var fontAtlas *text.Atlas
 
-func (g *Gomics) ToggleFullScreen() {
+func (g *GogoReader) ToggleFullScreen() {
 	if g.preferences.FullScreen {
 
 		g.win.SetMonitor(pixelgl.PrimaryMonitor())
@@ -55,11 +55,11 @@ func (g *Gomics) ToggleFullScreen() {
 	g.needsRefresh = true
 }
 
-func (g *Gomics) toggleInfoDisplay() {
+func (g *GogoReader) toggleInfoDisplay() {
 	g.infoDisplay = !g.infoDisplay
 }
 
-func (g *Gomics) crop(key pixelgl.Button) float64 {
+func (g *GogoReader) crop(key pixelgl.Button) float64 {
 	speed := 0.0
 	if g.win.Pressed(key) {
 		speed = 1.0
@@ -71,16 +71,16 @@ func (g *Gomics) crop(key pixelgl.Button) float64 {
 	return speed
 }
 
-func (g *Gomics) Update() error {
+func (g *GogoReader) Update() error {
 
 	if g.fatalErr != nil {
 		return nil
 	}
 
-	album.GetCurrentPage().Images[0].Top += g.crop(pixelgl.KeyUp)
-	album.GetCurrentPage().Images[0].Bottom += g.crop(pixelgl.KeyDown)
-	album.GetCurrentPage().Images[0].Left += g.crop(pixelgl.KeyLeft)
-	album.GetCurrentPage().Images[0].Right += g.crop(pixelgl.KeyRight)
+	album.GetCurrentView().Images[0].Top += g.crop(pixelgl.KeyUp)
+	album.GetCurrentView().Images[0].Bottom += g.crop(pixelgl.KeyDown)
+	album.GetCurrentView().Images[0].Left += g.crop(pixelgl.KeyLeft)
+	album.GetCurrentView().Images[0].Right += g.crop(pixelgl.KeyRight)
 
 	if g.win.JustPressed(pixelgl.KeyI) {
 		g.toggleInfoDisplay()
@@ -96,17 +96,17 @@ func (g *Gomics) Update() error {
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageUp) && album.CurrentPageIndex > 0 {
+	if g.win.JustPressed(pixelgl.KeyPageUp) && album.CurrentViewIndex > 0 {
 		g.PreviousPage()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageDown) && album.CurrentPageIndex < len(album.Pages)-1 {
+	if g.win.JustPressed(pixelgl.KeyPageDown) && album.CurrentViewIndex < len(album.Views)-1 {
 		g.NextPage()
 	}
 
 	if g.win.JustPressed(pixelgl.KeyDelete) {
 		// remove current page
-		album.Pages = append(album.Pages[:album.CurrentPageIndex], album.Pages[album.CurrentPageIndex+1:]...)
+		album.Views = append(album.Views[:album.CurrentViewIndex], album.Views[album.CurrentViewIndex+1:]...)
 		g.needsRefresh = true
 	}
 
@@ -117,7 +117,7 @@ func (g *Gomics) Update() error {
 
 	if g.win.JustPressed(pixelgl.KeyEnd) {
 		// go to the last page
-		g.goTo(len(album.Pages) - 1)
+		g.goTo(len(album.Views) - 1)
 	}
 
 	if g.win.JustPressed(pixelgl.MouseButtonLeft) {
@@ -126,11 +126,11 @@ func (g *Gomics) Update() error {
 	}
 
 	if g.win.JustPressed(pixelgl.KeyL) {
-		album.GetCurrentPage().RotateLeft()
+		album.GetCurrentView().RotateLeft()
 		g.needsRefresh = true
 	}
 	if g.win.JustPressed(pixelgl.KeyR) {
-		album.GetCurrentPage().RotateRight()
+		album.GetCurrentView().RotateRight()
 		g.needsRefresh = true
 	}
 
@@ -139,7 +139,12 @@ func (g *Gomics) Update() error {
 	}
 
 	if g.win.JustPressed(pixelgl.KeyB) {
-		g.preferences.RemoveBorders = !g.preferences.RemoveBorders
+		if g.win.Pressed(pixelgl.KeyLeftShift) || g.win.Pressed(pixelgl.KeyRightShift) {
+			// only for the current page
+			album.GetCurrentView().ToggleBorder(g.preferences.RemoveBorders)
+		} else {
+			g.preferences.RemoveBorders = !g.preferences.RemoveBorders
+		}
 		g.needsRefresh = true
 	}
 
@@ -149,17 +154,17 @@ func (g *Gomics) Update() error {
 	}
 
 	if g.win.JustPressed(pixelgl.KeyMinus) {
-		album.GetCurrentPage().RotationAngle -= 0.05
+		album.GetCurrentView().RotationAngle -= 0.05
 		g.needsRefresh = true
 	}
 
 	if g.win.JustPressed(pixelgl.KeyPeriod) {
-		album.GetCurrentPage().RotationAngle += 0.05
+		album.GetCurrentView().RotationAngle += 0.05
 		g.needsRefresh = true
 	}
 
 	if g.win.JustPressed(pixelgl.KeyKPDivide) {
-		album.GetCurrentPage().RotationAngle = 0
+		album.GetCurrentView().RotationAngle = 0
 		g.needsRefresh = true
 	}
 
@@ -176,21 +181,21 @@ func (g *Gomics) Update() error {
 		AppQuit(g.preferences)
 	}
 
-	if g.win.JustPressed(pixelgl.KeyLeftShift) {
-		if len(album.GetCurrentPage().Images) == 1 && album.CurrentPageIndex < len(album.Pages)-1 {
+	if g.win.JustPressed(pixelgl.KeyD) {
+		if len(album.GetCurrentView().Images) == 1 && album.CurrentViewIndex < len(album.Views)-1 {
 			// only if we have a page after the current one
-			album.GetCurrentPage().Images = append(album.GetCurrentPage().Images, album.Pages[album.CurrentPageIndex+1].Images...)
-			album.Pages = append(album.Pages[:album.CurrentPageIndex+1], album.Pages[album.CurrentPageIndex+2:]...)
-		} else if len(album.GetCurrentPage().Images) > 1 {
+			album.GetCurrentView().Images = append(album.GetCurrentView().Images, album.Views[album.CurrentViewIndex+1].Images...)
+			album.Views = append(album.Views[:album.CurrentViewIndex+1], album.Views[album.CurrentViewIndex+2:]...)
+		} else if len(album.GetCurrentView().Images) > 1 {
 			// create a new page with only the second image
-			newPage := PageData{Images: album.GetCurrentPage().Images[1:]}
+			newPage := ViewData{Images: album.GetCurrentView().Images[1:]}
 			// only keep the first image on the current page
-			album.GetCurrentPage().Images = album.GetCurrentPage().Images[:1]
+			album.GetCurrentView().Images = album.GetCurrentView().Images[:1]
 
 			// allocate one more page
-			album.Pages = append(album.Pages[:album.CurrentPageIndex+1], album.Pages[album.CurrentPageIndex:]...)
+			album.Views = append(album.Views[:album.CurrentViewIndex+1], album.Views[album.CurrentViewIndex:]...)
 			// next page is the new page
-			album.Pages[album.CurrentPageIndex+1] = &newPage
+			album.Views[album.CurrentViewIndex+1] = &newPage
 		}
 		g.needsRefresh = true
 	}
@@ -198,12 +203,12 @@ func (g *Gomics) Update() error {
 	return g.refresh()
 }
 
-func (g *Gomics) drawBackGround() {
+func (g *GogoReader) drawBackGround() {
 	imd := imdraw.New(nil)
-	if album.GetCurrentPage().BackgroundColors != nil {
-		backw := g.size.X / float64(len(album.GetCurrentPage().BackgroundColors))
+	if album.GetCurrentView().BackgroundColors != nil {
+		backw := g.size.X / float64(len(album.GetCurrentView().BackgroundColors))
 		x := 0.0
-		for _, color := range album.GetCurrentPage().BackgroundColors {
+		for _, color := range album.GetCurrentView().BackgroundColors {
 			imd.Color = color
 			imd.Push(pixel.V(x, 0.0), pixel.V(x+backw, 0.0))
 			imd.Push(pixel.V(x+backw, g.size.Y), pixel.V(x, g.size.Y))
@@ -214,12 +219,12 @@ func (g *Gomics) drawBackGround() {
 	}
 }
 
-func (g *Gomics) Draw() {
+func (g *GogoReader) Draw() {
 
 	// draw background
 	g.drawBackGround()
 
-	pageData := album.GetCurrentPage()
+	pageData := album.GetCurrentView()
 
 	var totalWidth, maxHeight float64
 	for _, sprite := range pageData.imageSprites {
@@ -282,14 +287,14 @@ func (g *Gomics) Draw() {
 		textScale := 2.0
 		infoText := text.New(pixel.V(5, g.size.Y-fontAtlas.LineHeight()*textScale), fontAtlas)
 		var fileNames string
-		for i, image := range album.GetCurrentPage().Images {
+		for i, image := range album.GetCurrentView().Images {
 			if i > 0 {
 				fileNames = fileNames + " "
 			}
 			fileNames = fileNames + image.FileName
 		}
 
-		message := fmt.Sprintf("Page %d (%d %%)\nFiles names\t%s\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentPageIndex, album.CurrentPageIndex*100/len(album.Pages), fileNames, g.size.X, g.size.Y, totalWidth, maxHeight, scale)
+		message := fmt.Sprintf("Page %d (%d %%)\nFiles names\t%s\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentViewIndex, album.CurrentViewIndex*100/len(album.Views), fileNames, g.size.X, g.size.Y, totalWidth, maxHeight, scale)
 		fmt.Fprintln(infoText, message)
 		// fmt.Fprintf(infoText, "Rotation : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
 		if g.Zoom {
@@ -324,13 +329,13 @@ var archiveFile string
 
 var album Album
 
-func (g *Gomics) NextPage() bool {
-	g.goTo(album.CurrentPageIndex + 1)
+func (g *GogoReader) NextPage() bool {
+	g.goTo(album.CurrentViewIndex + 1)
 	return true
 }
 
-func (g *Gomics) PreviousPage() bool {
-	g.goTo(album.CurrentPageIndex - 1)
+func (g *GogoReader) PreviousPage() bool {
+	g.goTo(album.CurrentViewIndex - 1)
 	return true
 }
 
@@ -350,12 +355,12 @@ func backgroundColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA
 	return gogoreader.ProminentColor(pictureData, rect)
 }
 
-func (g *Gomics) preparePage(pageData *PageData) error {
+func (g *GogoReader) prepareView(viewData *ViewData) error {
 
-	pageData.mu.Lock()
-	defer pageData.mu.Unlock()
+	viewData.mu.Lock()
+	defer viewData.mu.Unlock()
 
-	if pageData.imageSprites != nil {
+	if viewData.imageSprites != nil {
 		// page was already prepared
 		return nil
 	}
@@ -363,9 +368,9 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 	var err error
 	var totalWidth, h float64
 
-	pageData.BackgroundColors = make([]pixel.RGBA, 0, 2)
-	pageData.imageSprites = make([]*pixel.Sprite, 0, len(pageData.Images))
-	for index, imgData := range pageData.Images {
+	viewData.BackgroundColors = make([]pixel.RGBA, 0, 2)
+	viewData.imageSprites = make([]*pixel.Sprite, 0, len(viewData.Images))
+	for index, imgData := range viewData.Images {
 		// ensure all images used by this page are loaded
 		var rawImage image.Image
 		rawImage, err = comicBook.ReadEntry(imgData.FileName)
@@ -383,8 +388,8 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		if album.GrayScale {
 			rawImage = imaging.Grayscale(rawImage)
 		}
-		if pageData.RotationAngle != 0 {
-			rawImage = imaging.Rotate(rawImage, pageData.RotationAngle, color.RGBA{255, 255, 255, 255})
+		if viewData.RotationAngle != 0 {
+			rawImage = imaging.Rotate(rawImage, viewData.RotationAngle, color.RGBA{255, 255, 255, 255})
 		}
 
 		pictureData := pixel.PictureDataFromImage(rawImage)
@@ -394,7 +399,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 			cropRect = pixel.Rect{Min: pixel.V(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Bottom), Max: pixel.V(cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Top)}
 		}
 
-		if g.preferences.RemoveBorders {
+		if (viewData.bordersOverride && viewData.RemoveBorders) || g.preferences.RemoveBorders {
 			crop.CropBorders(pictureData, &cropRect)
 		}
 
@@ -404,11 +409,11 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 
 		if index == 0 {
 			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X+offsetW, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
-			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
+			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
-		if index == len(pageData.Images)-1 {
+		if index == len(viewData.Images)-1 {
 			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X-offsetW, cropRect.Max.Y)}
-			pageData.BackgroundColors = append(pageData.BackgroundColors, backgroundColor(pictureData, rect))
+			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 
 		iw, ih := float64(cropRect.W()), float64(cropRect.H())
@@ -418,7 +423,7 @@ func (g *Gomics) preparePage(pageData *PageData) error {
 		}
 
 		sprite := pixel.NewSprite(pictureData, cropRect)
-		pageData.imageSprites = append(pageData.imageSprites, sprite)
+		viewData.imageSprites = append(viewData.imageSprites, sprite)
 	}
 
 	return err
@@ -461,7 +466,7 @@ func run() {
 	image, _, _ := image.Decode(bytes.NewReader(resources.Gogoreader_png))
 	icons = append(icons, pixel.PictureDataFromImage(image))
 
-	g := &Gomics{}
+	g := &GogoReader{}
 
 	log.Printf("Loading %s\n", archiveFile)
 	comicBook, err = files.FromFile(archiveFile)
@@ -560,29 +565,29 @@ func main() {
 	pixelgl.Run(run)
 }
 
-func (g *Gomics) goTo(newImageIndex int) error {
-	if newImageIndex == album.CurrentPageIndex {
+func (g *GogoReader) goTo(newImageIndex int) error {
+	if newImageIndex == album.CurrentViewIndex {
 		return nil
 	}
-	album.CurrentPageIndex = newImageIndex
+	album.CurrentViewIndex = newImageIndex
 	g.needsRefresh = true
 	return nil
 }
 
-func (g *Gomics) refresh() error {
+func (g *GogoReader) refresh() error {
 
 	if !g.needsRefresh {
 		return nil
 	}
 	g.needsRefresh = false
-	album.GetCurrentPage().imageSprites = nil
-	err := g.preparePage(album.GetCurrentPage())
+	album.GetCurrentView().imageSprites = nil
+	err := g.prepareView(album.GetCurrentView())
 	if err != nil {
 		return err
 	}
-	if album.CurrentPageIndex < len(album.Pages)-1 {
+	if album.CurrentViewIndex < len(album.Views)-1 {
 		// prepare next page in the background
-		go g.preparePage(album.Pages[album.CurrentPageIndex+1])
+		go g.prepareView(album.Views[album.CurrentViewIndex+1])
 	}
 
 	return err

@@ -11,23 +11,26 @@ type ImageData struct {
 	Visible  bool
 	Rotation Rotation
 
+	// cropping
 	Top    float64
 	Bottom float64
 	Left   float64
 	Right  float64
 }
 
-type PageData struct {
+type ViewData struct {
 	mu sync.Mutex
 
 	Images           []*ImageData
 	RotationAngle    float64
 	BackgroundColors []pixel.RGBA
+	RemoveBorders    bool
+	bordersOverride  bool
 
 	imageSprites []*pixel.Sprite
 }
 
-func (p *PageData) RotateRight() {
+func (p *ViewData) RotateRight() {
 	for i := 0; i < len(p.Images); i++ {
 		if p.Images[i].Rotation == None {
 			p.Images[i].Rotation = Right
@@ -38,7 +41,7 @@ func (p *PageData) RotateRight() {
 	p.Reset()
 }
 
-func (p *PageData) RotateLeft() {
+func (p *ViewData) RotateLeft() {
 	for i := 0; i < len(p.Images); i++ {
 		if p.Images[i].Rotation == None {
 			p.Images[i].Rotation = Left
@@ -49,7 +52,13 @@ func (p *PageData) RotateLeft() {
 	p.Reset()
 }
 
-func (p *PageData) Reset() {
+func (p *ViewData) ToggleBorder(globalSetting bool) {
+	p.RemoveBorders = !p.RemoveBorders
+	p.bordersOverride = p.RemoveBorders != globalSetting
+}
+
+func (p *ViewData) Reset() {
+	p.bordersOverride = false
 	for i := 0; i < len(p.Images); i++ {
 		p.Images[i].Top = 0
 		p.Images[i].Bottom = 0

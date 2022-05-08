@@ -32,15 +32,20 @@ func buildDefaultConfig() error {
 		}
 	}
 	if len(album.Images) == 0 {
-		return errors.New("no image found in comicBook")
+		return errors.New("no image found in archive")
+	}
+
+	var r, err = regexp.Compile(`\d+`)
+	if err != nil {
+		return err
 	}
 
 	// sort images by their filename
 	sort.Slice(album.Images, func(i, j int) bool {
 		// extract number for file name
-		var r = regexp.MustCompile("\\d+")
-		var imatch = r.FindString(album.Images[i].FileName)
-		var jmatch = r.FindString(album.Images[j].FileName)
+
+		var imatch = strings.Join(r.FindAllString(album.Images[i].FileName, -1), "")
+		var jmatch = strings.Join(r.FindAllString(album.Images[j].FileName, -1), "")
 		if imatch != "" && jmatch != "" {
 			var numsI, _ = strconv.Atoi(imatch)
 			var numsJ, _ = strconv.Atoi(jmatch)
@@ -50,9 +55,9 @@ func buildDefaultConfig() error {
 	})
 
 	// create a default page for each of these images
-	album.Pages = make([]*PageData, len(album.Images))
+	album.Views = make([]*ViewData, len(album.Images))
 	for i, img := range album.Images {
-		album.Pages[i] = &PageData{Images: []*ImageData{img}}
+		album.Views[i] = &ViewData{Images: []*ImageData{img}}
 	}
 
 	return nil
@@ -82,7 +87,7 @@ func readConfiguration(fileMD5 string) (Preferences, error) {
 		}
 	}
 
-	album.Pages = make([]*PageData, 0)
+	album.Views = make([]*ViewData, 0)
 	album.MD5 = fileMD5
 
 	configurationFile := album.GetConfigurationFile(configFolder)
@@ -103,7 +108,7 @@ func readConfiguration(fileMD5 string) (Preferences, error) {
 		}
 	}
 
-	log.Printf("Album has %d pages\n", len(album.Pages))
+	log.Printf("Album has %d pages\n", len(album.Views))
 
 	return preferences, err
 }
