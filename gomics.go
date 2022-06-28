@@ -12,46 +12,44 @@ import (
 	"runtime/pprof"
 
 	"github.com/disintegration/imaging"
-	"github.com/faiface/pixel"
-	"github.com/faiface/pixel/imdraw"
-	"github.com/faiface/pixel/pixelgl"
-	"github.com/faiface/pixel/text"
+	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/mozvip/gomics/crop"
 	"github.com/mozvip/gomics/files"
 	"github.com/mozvip/gomics/gogoreader"
 	"github.com/mozvip/gomics/resources"
 	"github.com/mozvip/gomics/ui"
-	"golang.org/x/image/font/basicfont"
 )
 
 type GogoReader struct {
-	size         pixel.Vec
 	needsRefresh bool
 	infoDisplay  bool
 	preferences  Preferences
 
 	Zoom          bool
-	ZoomPositionX float64
-	ZoomPositionY float64
+	ZoomPositionX uint32
+	ZoomPositionY uint32
 
 	fatalErr error
 
 	messages []ui.Message
-	win      *pixelgl.Window
 }
-
-var fontAtlas *text.Atlas
 
 func (g *GogoReader) ToggleFullScreen() {
 	if g.preferences.FullScreen {
-
-		g.win.SetMonitor(pixelgl.PrimaryMonitor())
-		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(pixelgl.PrimaryMonitor().Size())})
+		if !rl.IsWindowFullscreen() {
+			monitor := rl.GetCurrentMonitor()
+			width := int32(rl.GetMonitorWidth(monitor))
+			height := int32(rl.GetMonitorHeight(monitor))
+			rl.CloseWindow()
+			rl.InitWindow(width, height, "GogoReader")
+			rl.ToggleFullscreen()
+		}
 	} else {
-		g.win.SetMonitor(nil)
-		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y)})
+		if rl.IsWindowFullscreen() {
+			rl.CloseWindow()
+			rl.InitWindow(g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y, "GogoReader")
+		}
 	}
-	g.size = g.win.Bounds().Max
 	g.needsRefresh = true
 }
 
@@ -59,87 +57,86 @@ func (g *GogoReader) toggleInfoDisplay() {
 	g.infoDisplay = !g.infoDisplay
 }
 
-func (g *GogoReader) crop(key pixelgl.Button) float64 {
-	speed := 0.0
-	if g.win.Pressed(key) {
+func (g *GogoReader) crop(key int32) float32 {
+	speed := float32(0.0)
+	if rl.IsKeyPressed(key) {
 		speed = 1.0
 	}
-	if g.win.Repeated(key) {
-		speed = 2.0
-	}
+	// FIXME
+	/*
+		if g.win.Repeated(key) {
+			speed = 2.0
+		}
+	*/
 	g.needsRefresh = speed > 0
 	return speed
 }
 
 func (g *GogoReader) Update() error {
 
-	if g.fatalErr != nil {
-		return nil
-	}
+	album.GetCurrentView().Images[0].Top += g.crop(rl.KeyUp)
+	album.GetCurrentView().Images[0].Bottom += g.crop(rl.KeyDown)
+	album.GetCurrentView().Images[0].Left += g.crop(rl.KeyLeft)
+	album.GetCurrentView().Images[0].Right += g.crop(rl.KeyRight)
 
-	album.GetCurrentView().Images[0].Top += g.crop(pixelgl.KeyUp)
-	album.GetCurrentView().Images[0].Bottom += g.crop(pixelgl.KeyDown)
-	album.GetCurrentView().Images[0].Left += g.crop(pixelgl.KeyLeft)
-	album.GetCurrentView().Images[0].Right += g.crop(pixelgl.KeyRight)
-
-	if g.win.JustPressed(pixelgl.KeyI) {
+	if rl.IsKeyPressed(rl.KeyI) {
 		g.toggleInfoDisplay()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyF1) {
-		g.win.SetSmooth(true)
+	if rl.IsKeyPressed(rl.KeyF1) {
+		//TODO g.win.SetSmooth(true)
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyF2) {
-		g.win.SetSmooth(false)
+	if rl.IsKeyPressed(rl.KeyF2) {
+		//TODO g.win.SetSmooth(false)
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageUp) && album.CurrentViewIndex > 0 {
+	if rl.IsKeyPressed(rl.KeyPageUp) && album.CurrentViewIndex > 0 {
 		g.PreviousPage()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageDown) && album.CurrentViewIndex < len(album.Views)-1 {
+	if rl.IsKeyPressed(rl.KeyPageDown) && album.CurrentViewIndex < len(album.Views)-1 {
 		g.NextPage()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyDelete) {
+	if rl.IsKeyPressed(rl.KeyDelete) {
 		// remove current page
 		album.Views = append(album.Views[:album.CurrentViewIndex], album.Views[album.CurrentViewIndex+1:]...)
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyHome) {
+	if rl.IsKeyPressed(rl.KeyHome) {
 		// go to the first page
 		g.goTo(0)
 	}
 
-	if g.win.JustPressed(pixelgl.KeyEnd) {
+	if rl.IsKeyPressed(rl.KeyEnd) {
 		// go to the last page
 		g.goTo(len(album.Views) - 1)
 	}
 
-	if g.win.JustPressed(pixelgl.MouseButtonLeft) {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		g.Zoom = !g.Zoom
-		g.ZoomPositionX = g.win.Bounds().Center().X
+		//FIXME g.ZoomPositionX = g.win.Bounds().Center().X
 	}
 
-	if g.win.JustPressed(pixelgl.KeyL) {
+	if rl.IsKeyPressed(rl.KeyL) {
 		album.GetCurrentView().RotateLeft()
 		g.needsRefresh = true
 	}
-	if g.win.JustPressed(pixelgl.KeyR) {
+	if rl.IsKeyPressed(rl.KeyR) {
 		album.GetCurrentView().RotateRight()
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyG) {
+	if rl.IsKeyPressed(rl.KeyG) {
 		album.GrayScale = !album.GrayScale
 	}
 
-	if g.win.JustPressed(pixelgl.KeyB) {
-		if g.win.Pressed(pixelgl.KeyLeftShift) || g.win.Pressed(pixelgl.KeyRightShift) {
+	if rl.IsKeyPressed(rl.KeyB) {
+		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
 			// only for the current page
 			album.GetCurrentView().ToggleBorder(g.preferences.RemoveBorders)
 		} else {
@@ -148,40 +145,40 @@ func (g *GogoReader) Update() error {
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyBackspace) {
+	if rl.IsKeyPressed(rl.KeyBackspace) {
 		album.Reset()
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyMinus) {
+	if rl.IsKeyPressed(rl.KeyMinus) {
 		album.GetCurrentView().RotationAngle -= 0.05
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPeriod) {
+	if rl.IsKeyPressed(rl.KeyPeriod) {
 		album.GetCurrentView().RotationAngle += 0.05
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyKPDivide) {
+	if rl.IsKeyPressed(rl.KeyKpDivide) {
 		album.GetCurrentView().RotationAngle = 0
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyF11) || g.win.JustPressed(pixelgl.KeyF) {
+	if rl.IsKeyPressed(rl.KeyF11) || rl.IsKeyPressed(rl.KeyF) {
 		if !g.preferences.FullScreen {
 			// save the current size of the window
-			g.preferences.WindowedSize = g.win.Bounds().Size()
+			g.preferences.WindowedSize = NewVector2Int(rl.GetScreenWidth(), rl.GetScreenHeight())
 		}
 		g.preferences.FullScreen = !g.preferences.FullScreen
 		g.ToggleFullScreen()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyEscape) || g.win.JustPressed(pixelgl.KeyQ) {
+	if rl.IsKeyPressed(rl.KeyEscape) || rl.IsKeyPressed(rl.KeyQ) {
 		AppQuit(g.preferences)
 	}
 
-	if g.win.JustPressed(pixelgl.KeyD) {
+	if rl.IsKeyPressed(rl.KeyD) {
 		if len(album.GetCurrentView().Images) == 1 && album.CurrentViewIndex < len(album.Views)-1 {
 			// only if we have a page after the current one
 			album.GetCurrentView().Images = append(album.GetCurrentView().Images, album.Views[album.CurrentViewIndex+1].Images...)
@@ -204,18 +201,14 @@ func (g *GogoReader) Update() error {
 }
 
 func (g *GogoReader) drawBackGround() {
-	imd := imdraw.New(nil)
 	if album.GetCurrentView().BackgroundColors != nil {
-		backw := g.size.X / float64(len(album.GetCurrentView().BackgroundColors))
-		x := 0.0
+		var x, backw int32
+		backw = int32(rl.GetScreenWidth()) / int32(len(album.GetCurrentView().BackgroundColors))
+		x = 0
 		for _, color := range album.GetCurrentView().BackgroundColors {
-			imd.Color = color
-			imd.Push(pixel.V(x, 0.0), pixel.V(x+backw, 0.0))
-			imd.Push(pixel.V(x+backw, g.size.Y), pixel.V(x, g.size.Y))
-			imd.Polygon(0)
+			rl.DrawRectangle(x, 0, x+backw, int32(rl.GetScreenHeight()), color)
 			x += backw
 		}
-		imd.Draw(g.win)
 	}
 }
 
@@ -224,68 +217,49 @@ func (g *GogoReader) Draw() {
 	// draw background
 	g.drawBackGround()
 
-	pageData := album.GetCurrentView()
+	currentView := album.GetCurrentView()
 
-	var totalWidth, maxHeight float64
-	for _, sprite := range pageData.imageSprites {
-		spriteW, spriteH := sprite.Frame().W(), sprite.Frame().H()
-		totalWidth += spriteW
-		if spriteH > maxHeight {
-			maxHeight = spriteH
-		}
-	}
+	totalWidth := currentView.TotalWidth
+	maxHeight := currentView.MaxHeight
 
-	// draw scaled images
-	scale := 1.0
-	if maxHeight > g.size.Y {
-		scale = g.size.Y / maxHeight
-	}
-	/*
-		FIXME
-			if (totalWidth * scale) > g.size.X {
-				scale = g.size.X / totalWidth
-			}
-	*/
+	// scale image to maximize visibility
+	scale := float32(rl.GetScreenHeight()) / float32(maxHeight)
 
 	if g.Zoom {
-		mousePosition := g.win.MousePosition()
+		mousePosition := rl.GetMousePosition()
 
 		// FIXME : use a percentage of the total height instead of absolute 100
 		if mousePosition.Y < 100 {
-			if g.ZoomPositionY >= g.size.Y-maxHeight {
+			if g.ZoomPositionY >= uint32(rl.GetScreenHeight())-maxHeight {
 				g.ZoomPositionY -= 15
 			}
 		}
-		if mousePosition.Y > (g.size.Y - 100) {
+		if mousePosition.Y > float32(rl.GetScreenHeight()-100) {
 			if g.ZoomPositionY <= maxHeight {
 				g.ZoomPositionY += 15
 			}
 		}
 	}
 
-	center := g.win.Bounds().Center()
-	positions := make([]pixel.Vec, 0, len(pageData.imageSprites))
-	startX := center.X - (totalWidth / 2.0)
-	for _, sprite := range pageData.imageSprites {
-		var imageW = sprite.Frame().W()
-		positions = append(positions, pixel.Vec{X: startX + imageW/2.0, Y: center.Y})
-		startX += sprite.Frame().W()
+	positions := make([]rl.Vector2, 0, len(currentView.images))
+	wPerImage := rl.GetScreenWidth() / len(currentView.images)
+	startX := wPerImage / 4
+	for i := 0; i < len(currentView.images); i++ {
+		positions = append(positions, rl.NewVector2(float32(startX), 0))
+		startX += wPerImage
 	}
-	for index, sprite := range pageData.imageSprites {
-		matrix := pixel.IM.Moved(positions[index])
-		if g.Zoom {
-			scale = g.win.Bounds().W() / totalWidth
-			matrix = matrix.Scaled(pixel.V(g.ZoomPositionX, g.ZoomPositionY), scale)
-		} else {
-			matrix = matrix.Scaled(g.win.Bounds().Center(), scale)
+	if currentView.textures == nil {
+		currentView.textures = make([]rl.Texture2D, len(currentView.images))
+		for index, image := range currentView.images {
+			currentView.textures[index] = rl.LoadTextureFromImage(image)
 		}
-		sprite.Draw(g.win, matrix)
+	}
+	for index, texture := range currentView.textures {
+		rl.DrawTextureEx(texture, rl.NewVector2(positions[index].X, positions[index].Y), 0.0, scale, rl.White)
 	}
 
 	if g.infoDisplay {
 
-		textScale := 2.0
-		infoText := text.New(pixel.V(5, g.size.Y-fontAtlas.LineHeight()*textScale), fontAtlas)
 		var fileNames string
 		for i, image := range album.GetCurrentView().Images {
 			if i > 0 {
@@ -294,25 +268,14 @@ func (g *GogoReader) Draw() {
 			fileNames = fileNames + image.FileName
 		}
 
-		message := fmt.Sprintf("Page %d (%d %%)\nFiles names\t%s\nScreen Size\t%.0f x %.0f\nImage Size\t%.0f x %.0f\nscale %.2f", album.CurrentViewIndex, album.CurrentViewIndex*100/len(album.Views), fileNames, g.size.X, g.size.Y, totalWidth, maxHeight, scale)
-		fmt.Fprintln(infoText, message)
-		// fmt.Fprintf(infoText, "Rotation : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
+		message := fmt.Sprintf("Page %d (%d %%)\nFiles names\t%s\nScreen Size\t%d x %d\nImage Size\t%d x %d\nscale %.2f", album.CurrentViewIndex, album.CurrentViewIndex*100/len(album.Views), fileNames, rl.GetScreenWidth(), rl.GetScreenHeight(), totalWidth, maxHeight, scale)
 		if g.Zoom {
-			fmt.Fprintf(infoText, "Zoom position : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
+			message = message + fmt.Sprintf("\nZoom position : x=%d y=%d", g.ZoomPositionX, g.ZoomPositionY)
 		}
-
-		infoBoxW := infoText.Bounds().Max.X
-		infoBoxH := infoText.Bounds().Max.Y
-
-		imd := imdraw.New(nil)
-		imd.Color = pixel.RGBA{0.2, 0.2, 0.2, 0.5}
-		imd.Push(pixel.V(0, g.size.Y))
-		imd.Push(pixel.V(infoBoxW, g.size.Y-infoBoxH))
-		imd.Rectangle(0)
-
-		imd.Draw(g.win)
-
-		infoText.Draw(g.win, pixel.IM.Scaled(infoText.Orig, textScale))
+		// fmt.Fprintf(infoText, "Rotation : x=%.0f y=%.0f", g.ZoomPositionX, g.ZoomPositionY)
+		textWidth := rl.MeasureText(message, 30)
+		rl.DrawRectangle(0, 0, textWidth+10, 200, color.RGBA{40, 40, 40, 128})
+		rl.DrawText(message, 5, 0, 30, rl.White)
 	}
 
 	y := 0
@@ -347,11 +310,7 @@ func AppQuit(preferences Preferences) {
 	os.Exit(0)
 }
 
-type SubImager interface {
-	SubImage(r image.Rectangle) image.Image
-}
-
-func backgroundColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
+func backgroundColor(pictureData *image.NRGBA, rect rl.Rectangle) color.RGBA {
 	return gogoreader.ProminentColor(pictureData, rect)
 }
 
@@ -360,19 +319,19 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 	viewData.mu.Lock()
 	defer viewData.mu.Unlock()
 
-	if viewData.imageSprites != nil {
+	if viewData.images != nil {
 		// page was already prepared
 		return nil
 	}
 
 	var err error
-	var totalWidth, h float64
+	var totalWidth, maxHeight uint32
 
-	viewData.BackgroundColors = make([]pixel.RGBA, 0, 2)
-	viewData.imageSprites = make([]*pixel.Sprite, 0, len(viewData.Images))
+	viewData.BackgroundColors = make([]color.RGBA, 0, 2)
+	viewData.images = make([]*rl.Image, 0, len(viewData.Images))
 	for index, imgData := range viewData.Images {
-		// ensure all images used by this page are loaded
-		var rawImage image.Image
+		// ensure all images used by this view are loaded
+		var rawImage *image.NRGBA
 		rawImage, err = comicBook.ReadEntry(imgData.FileName)
 		if err != nil {
 			log.Printf("Error reading image %s - %s\n", imgData.FileName, err.Error())
@@ -391,40 +350,38 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 		if viewData.RotationAngle != 0 {
 			rawImage = imaging.Rotate(rawImage, viewData.RotationAngle, color.RGBA{255, 255, 255, 255})
 		}
-
-		pictureData := pixel.PictureDataFromImage(rawImage)
-
-		cropRect := pictureData.Bounds()
+		cropRect := rl.NewRectangle(0, 0, float32(rawImage.Bounds().Max.X), float32(rawImage.Bounds().Max.Y))
 		if imgData.Left > 0 || imgData.Right > 0 || imgData.Bottom > 0 || imgData.Top > 0 {
-			cropRect = pixel.Rect{Min: pixel.V(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Bottom), Max: pixel.V(cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Top)}
+			cropRect = rl.NewRectangle(imgData.Left, imgData.Top, cropRect.Width-(imgData.Left+imgData.Right), cropRect.Height-(imgData.Top+imgData.Bottom))
 		}
 
 		if (viewData.bordersOverride && viewData.RemoveBorders) || g.preferences.RemoveBorders {
-			crop.CropBorders(pictureData, &cropRect)
+			crop.CropBorders(rawImage, &cropRect)
 		}
 
-		w := cropRect.W() / 5
-
-		offsetW := cropRect.W() / 20
-
+		blockWidth := cropRect.Width / 5
 		if index == 0 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X+offsetW, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
-			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
+			rect := rl.NewRectangle(cropRect.X, cropRect.Y, blockWidth, cropRect.Height)
+			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(rawImage, rect))
 		}
 		if index == len(viewData.Images)-1 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X-offsetW, cropRect.Max.Y)}
-			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
+			rect := rl.NewRectangle(cropRect.X+cropRect.Width-blockWidth, cropRect.Y, blockWidth, cropRect.Height)
+			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(rawImage, rect))
 		}
 
-		iw, ih := float64(cropRect.W()), float64(cropRect.H())
+		iw, ih := uint32(cropRect.Width), uint32(cropRect.Height)
 		totalWidth += iw
-		if ih > h {
-			h = ih
+		if ih > maxHeight {
+			maxHeight = ih
 		}
 
-		sprite := pixel.NewSprite(pictureData, cropRect)
-		viewData.imageSprites = append(viewData.imageSprites, sprite)
+		pictureData := rl.NewImageFromImage(rawImage)
+		rl.ImageCrop(pictureData, cropRect)
+		viewData.images = append(viewData.images, pictureData)
 	}
+
+	viewData.TotalWidth = totalWidth
+	viewData.MaxHeight = maxHeight
 
 	return err
 }
@@ -462,10 +419,6 @@ func run() {
 	archiveFile = flag.Args()[0]
 	log.Println("Opening file ", archiveFile)
 
-	var icons []pixel.Picture
-	image, _, _ := image.Decode(bytes.NewReader(resources.Gogoreader_png))
-	icons = append(icons, pixel.PictureDataFromImage(image))
-
 	g := &GogoReader{}
 
 	log.Printf("Loading %s\n", archiveFile)
@@ -493,48 +446,39 @@ func run() {
 
 	g.needsRefresh = true
 
-	var monitor *pixelgl.Monitor
-	if g.preferences.FullScreen {
-		monitor = pixelgl.PrimaryMonitor()
-	}
-
-	cfg := pixelgl.WindowConfig{
-		Title:     archiveFile,
-		Bounds:    pixel.R(0, 0, g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y),
-		Monitor:   monitor,
-		Resizable: g.fatalErr == nil,
-		Icon:      icons,
-		VSync:     true,
-	}
-	g.win, err = pixelgl.NewWindow(cfg)
-	if err != nil {
-		panic(err)
-	}
-
-	fontAtlas = text.NewAtlas(basicfont.Face7x13, text.ASCII)
+	rl.InitWindow(g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y, archiveFile)
+	image, _, _ := image.Decode(bytes.NewReader(resources.Gogoreader_png))
+	rl.SetWindowIcon(*rl.NewImageFromImage(image))
 
 	if g.fatalErr != nil {
-		g.win.SetTitle(fmt.Sprintf("Error - Unable to display %s", archiveFile))
-		textScale := 1.0
-		errorText := text.New(pixel.V(10, 0+fontAtlas.LineHeight()*textScale), fontAtlas)
-		fmt.Fprintf(errorText, "%s\n%s", archiveFile, g.fatalErr.Error())
-		g.win.SetBounds(errorText.Bounds())
-		for !g.win.Closed() {
-			errorText.Draw(g.win, pixel.IM.Scaled(errorText.Orig, textScale))
-			g.win.Update()
+		rl.SetWindowTitle(fmt.Sprintf("Error - Unable to display %s", archiveFile))
+		fontSize := int32(25)
+		errorText := g.fatalErr.Error()
+		width := rl.MeasureText(errorText, fontSize)
+		rl.SetWindowSize(int(width), 80)
+		for !rl.WindowShouldClose() {
+			rl.BeginDrawing()
+			rl.ClearBackground(rl.Black)
+			rl.DrawText(errorText, 0, 0, fontSize, rl.White)
+			rl.EndDrawing()
 		}
 
 	} else {
-		g.win.SetSmooth(true)
+		// FIXME g.win.SetSmooth(true)
 		g.ToggleFullScreen()
 		g.refresh()
 
-		for !g.win.Closed() {
+		for !rl.WindowShouldClose() {
+			rl.BeginDrawing()
+
 			g.Update()
 			g.Draw()
-			g.win.Update()
+
+			rl.EndDrawing()
 		}
 	}
+
+	rl.CloseWindow()
 
 	if g.fatalErr != nil {
 		os.Exit(-1)
@@ -562,7 +506,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	pixelgl.Run(run)
+	run()
 }
 
 func (g *GogoReader) goTo(newImageIndex int) error {
@@ -580,8 +524,14 @@ func (g *GogoReader) refresh() error {
 		return nil
 	}
 	g.needsRefresh = false
-	album.GetCurrentView().imageSprites = nil
-	err := g.prepareView(album.GetCurrentView())
+	view := album.GetCurrentView()
+	if view.images != nil {
+		for _, image := range view.images {
+			rl.UnloadImage(image)
+		}
+		view.images = nil
+	}
+	err := g.prepareView(view)
 	if err != nil {
 		return err
 	}

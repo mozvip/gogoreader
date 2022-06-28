@@ -19,7 +19,7 @@ func (z *ZippedComicBook) GetMD5() string {
 	return z.MD5
 }
 
-func (z *ZippedComicBook) ReadEntry(fileName string) (image.Image, error) {
+func (z *ZippedComicBook) ReadEntry(fileName string) (*image.NRGBA, error) {
 	for _, f := range z.zip.File {
 		if f.Name == fileName {
 			rc, err := f.Open()

@@ -1,59 +1,65 @@
 package gogoreader
 
 import (
-	"math"
+	"image"
+	"image/color"
 
-	"github.com/faiface/pixel"
+	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-func AverageColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
-	step := 3.0
-	var count, sr, sg, sb float64
-	for x := rect.Min.X; x < rect.Max.X; x += step {
-		for y := rect.Min.Y; y < rect.Max.Y; y += step {
-			rgba := pictureData.Color(pixel.Vec{X: x, Y: y})
-			r, g, b := rgba.R, rgba.G, rgba.B
-			if r > 0.95 && g > 0.95 && b > 0.95 {
-				// ignore white pixels
+func GetPixelColor(img *image.NRGBA, x uint32, y uint32) (r, g, b uint8) {
+	r1, g1, b1, _ := img.At(int(x), int(y)).RGBA()
+	return uint8(r1 >> 8), uint8(g1 >> 8), uint8(b1 >> 8)
+}
+
+func AverageColor(pictureData *image.NRGBA, rect rl.Rectangle) color.RGBA {
+	step := float32(3)
+	var count, sr, sg, sb uint32
+	for x := rect.X; x < rect.X+rect.Width; x += step {
+		intX := uint32(x)
+		for y := rect.Y; y < rect.Y+rect.Height; y += step {
+			r, g, b := GetPixelColor(pictureData, intX, uint32(y))
+			if r > 240 && g > 240 && b > 240 {
+				// ignore white & almost white pixels
 				continue
 			}
-			sr += r
-			sg += g
-			sb += b
+			sr += uint32(r)
+			sg += uint32(g)
+			sb += uint32(b)
 			count++
 		}
 	}
 	if count > 0 {
-		return pixel.RGB(sr/count, sg/count, sb/count)
+		return color.RGBA{R: uint8(sr / count), G: uint8(sg / count), B: uint8(sb / count), A: 255}
 	}
 
-	return pixel.RGB(0, 0, 0)
-
+	return color.RGBA{R: uint8(0), G: uint8(0), B: uint8(0), A: 255}
 }
 
-func ProminentColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
-	step := 3.0
+func ProminentColor(pictureData *image.NRGBA, rect rl.Rectangle) color.RGBA {
+	step := float32(3.0)
 
-	colorsCount := make(map[pixel.RGBA]uint)
+	colorsCount := make(map[color.RGBA]uint)
 	currentMax := uint(0)
-	prominentColor := pixel.RGB(0, 0, 0)
-	for x := rect.Min.X; x < rect.Max.X; x += step {
-		for y := rect.Min.Y; y < rect.Max.Y; y += step {
-			rgba := pictureData.Color(pixel.Vec{X: x, Y: y})
-			r, g, b := rgba.R, rgba.G, rgba.B
-			if r > 0.95 && g > 0.95 && b > 0.95 {
+	prominentColor := color.RGBA{R: uint8(0), G: uint8(0), B: uint8(0), A: 255}
+	for x := rect.X; x < rect.X+rect.Width; x += step {
+		intX := uint32(x)
+		for y := rect.Y; y < rect.Y+rect.Height; y += step {
+
+			r, g, b := GetPixelColor(pictureData, intX, uint32(y))
+			if r > 240 && g > 240 && b > 240 {
 				// ignore white pixels
 				continue
 			}
-			if r < 0.05 && g < 0.05 && b < 0.05 {
+			if r < 15 && g < 15 && b < 15 {
 				// ignore black pixels
 				continue
 			}
-			// remove precision
-			r = math.Round(r*10) / 10
-			g = math.Round(g*10) / 10
-			b = math.Round(b*10) / 10
-			color := pixel.RGB(r, g, b)
+			// remove last bit of precision
+			r = r >> 1 << 1
+			g = g >> 1 << 1
+			b = b >> 1 << 1
+			color := color.RGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}
 			count, hasKey := colorsCount[color]
 			if hasKey {
 				colorsCount[color] = count + 1

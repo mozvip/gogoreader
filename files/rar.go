@@ -15,7 +15,7 @@ type RaredComicBook struct {
 	header             *rardecode.FileHeader
 	currentHeaderIndex int
 
-	currentRawImage image.Image
+	currentRawImage *image.NRGBA
 	mu              sync.Mutex
 }
 
@@ -50,7 +50,7 @@ func (z *RaredComicBook) reload() error {
 	return nil
 }
 
-func (z *RaredComicBook) ReadEntry(fileName string) (image.Image, error) {
+func (z *RaredComicBook) ReadEntry(fileName string) (*image.NRGBA, error) {
 
 	z.mu.Lock()
 	defer z.mu.Unlock()

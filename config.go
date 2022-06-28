@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/faiface/pixel"
 	"gopkg.in/yaml.v3"
 )
 
@@ -81,10 +80,7 @@ func readConfiguration(fileMD5 string) (Preferences, error) {
 		}
 	}
 	if preferences.WindowedSize.X == 0 {
-		preferences.WindowedSize = pixel.Vec{
-			X: 800,
-			Y: 600,
-		}
+		preferences.WindowedSize = NewVector2Int(800, 600)
 	}
 
 	album.Views = make([]*ViewData, 0)

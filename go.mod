@@ -4,10 +4,7 @@ go 1.16
 
 require (
 	github.com/disintegration/imaging v1.6.2
-	github.com/faiface/glhf v0.0.0-20211013000516-57b20770c369 // indirect
-	github.com/faiface/pixel v0.10.0
-	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20220320163800-277f93cfa958 // indirect
+	github.com/gen2brain/raylib-go/raylib v0.0.0-20220601234331-25dea46fc2d9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/nwaples/rardecode v1.1.3
 	github.com/pkg/errors v0.9.1 // indirect

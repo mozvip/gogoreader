@@ -1,9 +1,10 @@
 package main
 
 import (
+	"image/color"
 	"sync"
 
-	"github.com/faiface/pixel"
+	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
 type ImageData struct {
@@ -12,10 +13,10 @@ type ImageData struct {
 	Rotation Rotation
 
 	// cropping
-	Top    float64
-	Bottom float64
-	Left   float64
-	Right  float64
+	Top    float32
+	Bottom float32
+	Left   float32
+	Right  float32
 }
 
 type ViewData struct {
@@ -23,11 +24,15 @@ type ViewData struct {
 
 	Images           []*ImageData
 	RotationAngle    float64
-	BackgroundColors []pixel.RGBA
+	BackgroundColors []color.RGBA
 	RemoveBorders    bool
 	bordersOverride  bool
 
-	imageSprites []*pixel.Sprite
+	TotalWidth uint32
+	MaxHeight  uint32
+
+	images   []*rl.Image
+	textures []rl.Texture2D
 }
 
 func (p *ViewData) RotateRight() {

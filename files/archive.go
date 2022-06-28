@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"image"
+	"image/draw"
 	"io"
 	"log"
 	"os"
@@ -21,31 +22,42 @@ type FileWithMD5 struct {
 type ComicBookArchive interface {
 	Close()
 	List() ([]string, error)
-	ReadEntry(fileName string) (image.Image, error)
+	ReadEntry(fileName string) (*image.NRGBA, error)
 	GetMD5() string
 	Init() error
 }
 
-var imageCache map[string]image.Image
+var imageCache map[string]*image.NRGBA
 
-func CreateImageFromReader(fileName string, reader io.Reader) (image.Image, error) {
+func CreateImageFromReader(fileName string, reader io.Reader) (*image.NRGBA, error) {
 	if imageCache == nil {
-		imageCache = make(map[string]image.Image)
+		imageCache = make(map[string]*image.NRGBA)
 	}
-	img, hasKey := imageCache[fileName]
+	src, hasKey := imageCache[fileName]
 	if hasKey {
-		return img, nil
+		return src, nil
 	}
 	var e error
+	var loadedImage image.Image
 	if strings.HasSuffix(fileName, "webp") {
-		img, e = webp.Decode(reader)
+		loadedImage, e = webp.Decode(reader)
 	} else {
-		img, _, e = image.Decode(reader)
+		loadedImage, _, e = image.Decode(reader)
 	}
-	if e == nil {
-		imageCache[fileName] = img
+
+	if e != nil {
+		return nil, e
 	}
-	return img, e
+
+	var rgbaImg *image.NRGBA
+	var ok bool
+	if rgbaImg, ok = loadedImage.(*image.NRGBA); !ok {
+		b := loadedImage.Bounds()
+		rgbaImg = image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(rgbaImg, rgbaImg.Bounds(), loadedImage, b.Min, draw.Src)
+	}
+	imageCache[fileName] = rgbaImg
+	return rgbaImg, e
 }
 
 func newZippedComicBook(MD5 string, fileName string) (*ZippedComicBook, error) {

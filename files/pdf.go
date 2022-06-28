@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
 	"os"
 
 	"github.com/unidoc/unipdf/v3/extractor"
@@ -25,7 +26,7 @@ func (P *PDFComicBook) List() ([]string, error) {
 	return P.Pages, nil
 }
 
-func (P *PDFComicBook) ReadEntry(fileName string) (image.Image, error) {
+func (P *PDFComicBook) ReadEntry(fileName string) (*image.NRGBA, error) {
 
 	var index int
 	fmt.Sscanf(fileName, "PDF Page %d", &index)
@@ -45,7 +46,13 @@ func (P *PDFComicBook) ReadEntry(fileName string) (image.Image, error) {
 
 	img := pimages.Images[0]
 	gimg, err := img.Image.ToGoImage()
-	return gimg, err
+
+	// FIXME: is this conversion always necessary ?
+	b := gimg.Bounds()
+	rgbaImg := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(rgbaImg, rgbaImg.Bounds(), gimg, b.Min, draw.Src)
+
+	return rgbaImg, err
 }
 
 func (P *PDFComicBook) GetMD5() string {

@@ -1,103 +1,98 @@
 package crop
 
 import (
+	"image"
 	"sync"
-	"sync/atomic"
 
-	"github.com/faiface/pixel"
+	rl "github.com/gen2brain/raylib-go/raylib"
+	"github.com/mozvip/gomics/gogoreader"
 )
 
 // comparator is a function that returns a difference between two colors in
-// range 0.0..1.0 (0.0 - same colors, 1.0 - totally different colors).
-type comparator func(r1, g1, b1, r2, g2, b2 float64) float64
+// range 0..255 (0 - same colors, 255 - totally different colors).
+type comparator func(r1, g1, b1, r2, g2, b2 uint8) uint32
 
 // CmpRGBComponents returns RGB components difference of two colors.
-func CmpRGBComponents(r1, g1, b1, r2, g2, b2 float64) float64 {
-	const maxDiff = 765.0 // Difference between black and white colors
-
-	return (max(r1, r2) - min(r1, r2)) +
-		(max(g1, g2) - min(g1, g2)) +
-		(max(b1, b2)-min(b1, b2))/maxDiff
+func CmpRGBComponents(r1, g1, b1, r2, g2, b2 uint8) uint32 {
+	return uint32((max(r1, r2)-min(r1, r2))+
+		(max(g1, g2)-min(g1, g2))+
+		(max(b1, b2)-min(b1, b2))) / 3
 }
 
-// min is minimum of two uint32
-func min(a, b float64) float64 {
+func min(a, b uint8) uint8 {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-// max is maximum of two uint32
-func max(a, b float64) float64 {
+func max(a, b uint8) uint8 {
 	if a > b {
 		return a
 	}
 	return b
 }
 
-func CropBorders(img *pixel.PictureData, rect *pixel.Rect) {
+func CropBorders(img *image.NRGBA, rect *rl.Rectangle) {
 	CropBordersWithComparator(img, rect, CmpRGBComponents)
 }
 
-func avgColorForLine(img *pixel.PictureData, y float64, minX float64, maxX float64) (r, g, b float64) {
-	var sumR, sumG, sumB float64
-	var c float64
+func avgColorForLine(img *image.NRGBA, y uint32, minX uint32, maxX uint32) (r, g, b uint8) {
+	var sumR, sumG, sumB uint32
+	var c uint32
 	for x := minX; x < maxX; x++ {
-		color := img.Color(pixel.V(x, y))
-		r, g, b := color.R, color.G, color.B
-		sumR += r
-		sumG += g
-		sumB += b
+		r, g, b := gogoreader.GetPixelColor(img, x, y)
+		sumR += uint32(r)
+		sumG += uint32(g)
+		sumB += uint32(b)
 		c++
 	}
 	if c == 0 {
 		return 0, 0, 0
 	}
-	return sumR / c, sumG / c, sumB / c
+	return uint8(sumR / c), uint8(sumG / c), uint8(sumB / c)
 }
 
-func avgColorForColumn(img *pixel.PictureData, x, minY, maxY float64) (r, g, b float64) {
-	var sumR, sumG, sumB float64
-	var c float64
-	for y := minY; y < maxY; y++ {
-		color := img.Color(pixel.V(x, y))
-		r, g, b := color.R, color.G, color.B
-		sumR += r
-		sumG += g
-		sumB += b
+func avgColorForColumn(img *image.NRGBA, x, minY, height uint32) (r, g, b uint8) {
+	var sumR, sumG, sumB uint32
+	var c uint32
+	for y := minY; y < minY+height; y++ {
+		r, g, b := gogoreader.GetPixelColor(img, x, y)
+		sumR += uint32(r)
+		sumG += uint32(g)
+		sumB += uint32(b)
 		c++
 	}
 	if c == 0 {
 		return 0, 0, 0
 	}
-	return sumR / c, sumG / c, sumB / c
+	return uint8(sumR / c), uint8(sumG / c), uint8(sumB / c)
 }
 
-func CropBordersWithComparator(img *pixel.PictureData, rect *pixel.Rect, comparator comparator) {
-	threshold := 0.10
-	countThreshold := 0.01
+func CropBordersWithComparator(img *image.NRGBA, rect *rl.Rectangle, comparator comparator) {
+	threshold := uint32(10)
+	countThreshold := float32(0.01)
 
 	var wg sync.WaitGroup
 
-	rectMinY := int64(rect.Min.Y)
-	rectMaxY := int64(rect.Max.Y)
-	rectMinX := int64(rect.Min.X)
-	rectMaxX := int64(rect.Max.X)
+	rectMinY := uint32(rect.Y)
+	rectMinX := uint32(rect.X)
+	rectWidth := uint32(rect.Width)
+	rectHeight := uint32(rect.Height)
 
 	const step = 4
 
-	maxBadForX := rect.W() * countThreshold
+	maxBadForX := int(rect.Width * countThreshold)
 	wg.Add(1)
+	// identify top line : rectMinY
 	go func() {
 		defer wg.Done()
-
-		r, g, b := avgColorForLine(img, float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMaxX)))
-		for minY := atomic.LoadInt64(&rectMinY); minY < atomic.LoadInt64(&rectMaxY); minY++ {
-			badCount := 0.0
-			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += step {
-				color := img.Color(pixel.V(float64(x), float64(minY)))
-				r1, g1, b1 := color.R, color.G, color.B
+		r, g, b := avgColorForLine(img, rectMinY, rectMinX, rectMinX+rectWidth)
+		for minY := rectMinY; minY < rectMinY+rectHeight; minY++ {
+			badCount := 0
+			var x uint32
+			for x = rectMinX; x < rectMinX+rectWidth; x += step {
+				r1, g1, b1 := gogoreader.GetPixelColor(img, x, minY)
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForX {
@@ -105,20 +100,21 @@ func CropBordersWithComparator(img *pixel.PictureData, rect *pixel.Rect, compara
 					}
 				}
 			}
-			atomic.AddInt64(&rectMinY, 1)
+			rectMinY++
 		}
 	}()
 
 	wg.Add(1)
+	// identify bottom line
 	go func() {
 		defer wg.Done()
 
-		r, g, b := avgColorForLine(img, float64(atomic.LoadInt64(&rectMaxY)-1), float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMaxX)-1))
-		for maxY := atomic.LoadInt64(&rectMaxY) - 1; maxY > atomic.LoadInt64(&rectMinY); maxY-- {
-			badCount := 0.0
-			for x := atomic.LoadInt64(&rectMinX); x < atomic.LoadInt64(&rectMaxX); x += step {
-				color := img.Color(pixel.V(float64(x), float64(maxY)))
-				r1, g1, b1 := color.R, color.G, color.B
+		r, g, b := avgColorForLine(img, uint32(rect.Y)+uint32(rect.Height)-1, rectMinX, rectMinX+uint32(rect.Width)-1)
+		for height := rectHeight - 1; height > 0; height-- {
+			badCount := 0
+			y := uint32(rectMinY + height - 1)
+			for x := rectMinX; x < rectMinX+rectWidth; x += step {
+				r1, g1, b1 := gogoreader.GetPixelColor(img, x, y)
 				if comparator(r1, g1, b1, r, g, b) > threshold {
 					badCount++
 					if badCount > maxBadForX {
@@ -126,58 +122,60 @@ func CropBordersWithComparator(img *pixel.PictureData, rect *pixel.Rect, compara
 					}
 				}
 			}
-			atomic.AddInt64(&rectMaxY, -1)
-		}
-	}()
-
-	maxBadForY := (rect.Max.Y - rect.Min.Y) * countThreshold
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		r, g, b := avgColorForColumn(img, float64(atomic.LoadInt64(&rectMinX)), float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMaxY)))
-		for minX := int(atomic.LoadInt64(&rectMinX)); minX < int(atomic.LoadInt64(&rectMaxX)); minX++ {
-			badCount := 0.0
-			for y := rect.Min.Y; y < rect.Max.Y; y += step {
-				color := img.Color(pixel.V(float64(minX), y))
-				r1, g1, b1 := color.R, color.G, color.B
-
-				if comparator(r1, g1, b1, r, g, b) > threshold {
-					badCount++
-					if badCount > maxBadForY {
-						return
-					}
-				}
-			}
-			atomic.AddInt64(&rectMinX, 1)
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		r, g, b := avgColorForColumn(img, float64(atomic.LoadInt64(&rectMaxX)-1), float64(atomic.LoadInt64(&rectMinY)), float64(atomic.LoadInt64(&rectMaxY)-1))
-		for maxX := atomic.LoadInt64(&rectMaxX) - 1; maxX > atomic.LoadInt64(&rectMinX); maxX-- {
-			badCount := 0.0
-			for y := atomic.LoadInt64(&rectMinY); y < atomic.LoadInt64(&rectMaxY); y += step {
-				color := img.Color(pixel.V(float64(maxX), float64(y)))
-				r1, g1, b1 := color.R, color.G, color.B
-				if comparator(r1, g1, b1, r, g, b) > threshold {
-					badCount++
-					if badCount > maxBadForY {
-						return
-					}
-				}
-			}
-			atomic.AddInt64(&rectMaxX, -1)
+			rectHeight--
 		}
 	}()
 
 	wg.Wait()
 
-	rect.Min.X = float64(rectMinX)
-	rect.Max.X = float64(rectMaxX)
-	rect.Min.Y = float64(rectMinY)
-	rect.Max.Y = float64(rectMaxY)
+	maxBadForY := int(rect.Height * countThreshold)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		r, g, b := avgColorForColumn(img, rectMinX, rectMinY, rectHeight)
+		var minX uint32
+		for minX = rectMinX; minX < rectMinX+rectWidth; minX++ {
+			badCount := 0
+			for y := rect.Y; y < rect.Y+rect.Height; y += step {
+				r1, g1, b1 := gogoreader.GetPixelColor(img, uint32(minX), uint32(y))
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForY {
+						return
+					}
+				}
+			}
+			rectMinX++
+		}
+	}()
+
+	wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		r, g, b := avgColorForColumn(img, rectMinX+rectWidth-1, rectMinY, rectHeight)
+		for maxX := rectMinX + rectWidth - 1; maxX > rectMinX; maxX-- {
+			badCount := 0
+			for y := rectMinY; y < rectMinY+rectHeight; y += step {
+				r1, g1, b1 := gogoreader.GetPixelColor(img, maxX, y)
+				if comparator(r1, g1, b1, r, g, b) > threshold {
+					badCount++
+					if badCount > maxBadForY {
+						return
+					}
+				}
+			}
+			rectWidth--
+		}
+	}()
+
+	wg.Wait()
+
+	rect.X = float32(rectMinX)
+	rect.Width = float32(rectWidth)
+	rect.Y = float32(rectMinY)
+	rect.Height = float32(rectHeight)
 }
