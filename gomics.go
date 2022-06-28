@@ -96,11 +96,11 @@ func (g *GogoReader) Update() error {
 		g.needsRefresh = true
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageUp) && album.CurrentViewIndex > 0 {
+	if (g.win.JustPressed(pixelgl.KeyPageUp) || g.win.MouseScroll().Y > 0) && album.CurrentViewIndex > 0 {
 		g.PreviousPage()
 	}
 
-	if g.win.JustPressed(pixelgl.KeyPageDown) && album.CurrentViewIndex < len(album.Views)-1 {
+	if (g.win.JustPressed(pixelgl.KeyPageDown) || g.win.MouseScroll().Y < 0) && album.CurrentViewIndex < len(album.Views)-1 {
 		g.NextPage()
 	}
 
@@ -400,7 +400,6 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 		}
 
 		w := cropRect.Dx() / 5
-
 		offsetW := cropRect.Dx() / 20
 
 		if index == 0 {
