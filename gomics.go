@@ -59,13 +59,13 @@ func (g *GogoReader) toggleInfoDisplay() {
 	g.infoDisplay = !g.infoDisplay
 }
 
-func (g *GogoReader) crop(key pixelgl.Button) float64 {
-	speed := 0.0
-	if g.win.Pressed(key) {
-		speed = 1.0
+func (g *GogoReader) crop(key pixelgl.Button) int {
+	speed := 0
+	if g.win.JustPressed(key) {
+		speed = 1
 	}
 	if g.win.Repeated(key) {
-		speed = 2.0
+		speed = 2
 	}
 	g.needsRefresh = speed > 0
 	return speed
@@ -305,7 +305,7 @@ func (g *GogoReader) Draw() {
 		infoBoxH := infoText.Bounds().Max.Y
 
 		imd := imdraw.New(nil)
-		imd.Color = pixel.RGBA{0.2, 0.2, 0.2, 0.5}
+		imd.Color = color.RGBA{30, 30, 30, 128}
 		imd.Push(pixel.V(0, g.size.Y))
 		imd.Push(pixel.V(infoBoxW, g.size.Y-infoBoxH))
 		imd.Rectangle(0)
@@ -347,11 +347,7 @@ func AppQuit(preferences Preferences) {
 	os.Exit(0)
 }
 
-type SubImager interface {
-	SubImage(r image.Rectangle) image.Image
-}
-
-func backgroundColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
+func backgroundColor(pictureData *pixel.PictureData, rect image.Rectangle) pixel.RGBA {
 	return gogoreader.ProminentColor(pictureData, rect)
 }
 
@@ -394,35 +390,35 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 
 		pictureData := pixel.PictureDataFromImage(rawImage)
 
-		cropRect := pictureData.Bounds()
+		cropRect := rawImage.Bounds()
 		if imgData.Left > 0 || imgData.Right > 0 || imgData.Bottom > 0 || imgData.Top > 0 {
-			cropRect = pixel.Rect{Min: pixel.V(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Bottom), Max: pixel.V(cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Top)}
+			cropRect = image.Rectangle{Min: image.Pt(cropRect.Min.X+imgData.Left, cropRect.Min.Y+imgData.Bottom), Max: image.Pt(cropRect.Max.X-imgData.Right, cropRect.Max.Y-imgData.Top)}
 		}
 
 		if (viewData.bordersOverride && viewData.RemoveBorders) || g.preferences.RemoveBorders {
 			crop.CropBorders(pictureData, &cropRect)
 		}
 
-		w := cropRect.W() / 5
+		w := cropRect.Dx() / 5
 
-		offsetW := cropRect.W() / 20
+		offsetW := cropRect.Dx() / 20
 
 		if index == 0 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Min.X+offsetW, cropRect.Min.Y), Max: pixel.V(cropRect.Min.X+w, cropRect.Max.Y)}
+			rect := image.Rectangle{Min: image.Pt(cropRect.Min.X+offsetW, cropRect.Min.Y), Max: image.Pt(cropRect.Min.X+w, cropRect.Max.Y)}
 			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 		if index == len(viewData.Images)-1 {
-			rect := pixel.Rect{Min: pixel.V(cropRect.Max.X-w, cropRect.Min.Y), Max: pixel.V(cropRect.Max.X-offsetW, cropRect.Max.Y)}
+			rect := image.Rectangle{Min: image.Pt(cropRect.Max.X-w, cropRect.Min.Y), Max: image.Pt(cropRect.Max.X-offsetW, cropRect.Max.Y)}
 			viewData.BackgroundColors = append(viewData.BackgroundColors, backgroundColor(pictureData, rect))
 		}
 
-		iw, ih := float64(cropRect.W()), float64(cropRect.H())
+		iw, ih := float64(cropRect.Dx()), float64(cropRect.Dy())
 		totalWidth += iw
 		if ih > h {
 			h = ih
 		}
 
-		sprite := pixel.NewSprite(pictureData, cropRect)
+		sprite := pixel.NewSprite(pictureData, pixel.R(float64(cropRect.Min.X), float64(cropRect.Min.Y), float64(cropRect.Max.X), float64(cropRect.Max.Y)))
 		viewData.imageSprites = append(viewData.imageSprites, sprite)
 	}
 

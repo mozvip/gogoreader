@@ -12,10 +12,10 @@ type ImageData struct {
 	Rotation Rotation
 
 	// cropping
-	Top    float64
-	Bottom float64
-	Left   float64
-	Right  float64
+	Top    int
+	Bottom int
+	Left   int
+	Right  int
 }
 
 type ViewData struct {

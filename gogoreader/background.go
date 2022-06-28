@@ -1,17 +1,18 @@
 package gogoreader
 
 import (
+	"image"
 	"math"
 
 	"github.com/faiface/pixel"
 )
 
-func AverageColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
-	step := 3.0
+func AverageColor(pictureData *pixel.PictureData, rect image.Rectangle) pixel.RGBA {
+	step := 3
 	var count, sr, sg, sb float64
 	for x := rect.Min.X; x < rect.Max.X; x += step {
 		for y := rect.Min.Y; y < rect.Max.Y; y += step {
-			rgba := pictureData.Color(pixel.Vec{X: x, Y: y})
+			rgba := pictureData.Color(pixel.Vec{X: float64(x), Y: float64(y)})
 			r, g, b := rgba.R, rgba.G, rgba.B
 			if r > 0.95 && g > 0.95 && b > 0.95 {
 				// ignore white pixels
@@ -31,15 +32,15 @@ func AverageColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
 
 }
 
-func ProminentColor(pictureData *pixel.PictureData, rect pixel.Rect) pixel.RGBA {
-	step := 3.0
+func ProminentColor(pictureData *pixel.PictureData, rect image.Rectangle) pixel.RGBA {
+	step := 3
 
 	colorsCount := make(map[pixel.RGBA]uint)
 	currentMax := uint(0)
 	prominentColor := pixel.RGB(0, 0, 0)
 	for x := rect.Min.X; x < rect.Max.X; x += step {
 		for y := rect.Min.Y; y < rect.Max.Y; y += step {
-			rgba := pictureData.Color(pixel.Vec{X: x, Y: y})
+			rgba := pictureData.Color(pixel.Vec{X: float64(x), Y: float64(y)})
 			r, g, b := rgba.R, rgba.G, rgba.B
 			if r > 0.95 && g > 0.95 && b > 0.95 {
 				// ignore white pixels
