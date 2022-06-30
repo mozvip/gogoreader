@@ -28,6 +28,23 @@ type ViewData struct {
 	bordersOverride  bool
 
 	imageSprites []*pixel.Sprite
+
+	totalWidth float64
+	maxHeight  float64
+}
+
+func (v *ViewData) updateSize() {
+
+	var totalWidth, maxHeight float64
+	for _, sprite := range v.imageSprites {
+		spriteW, spriteH := sprite.Frame().W(), sprite.Frame().H()
+		totalWidth += spriteW
+		if spriteH > maxHeight {
+			maxHeight = spriteH
+		}
+	}
+	v.totalWidth = totalWidth
+	v.maxHeight = maxHeight
 }
 
 func (p *ViewData) RotateRight() {
@@ -65,5 +82,5 @@ func (p *ViewData) Reset() {
 		p.Images[i].Left = 0
 		p.Images[i].Right = 0
 	}
-
+	p.updateSize()
 }

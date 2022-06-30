@@ -44,12 +44,11 @@ var fontAtlas *text.Atlas
 
 func (g *GogoReader) ToggleFullScreen() {
 	if g.preferences.FullScreen {
-
 		g.win.SetMonitor(pixelgl.PrimaryMonitor())
 		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(pixelgl.PrimaryMonitor().Size())})
 	} else {
 		g.win.SetMonitor(nil)
-		g.win.SetBounds(pixel.Rect{Min: pixel.V(0, 0), Max: pixel.V(g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y)})
+		g.win.SetBounds(pixel.R(0, 0, g.preferences.WindowedSize.X, g.preferences.WindowedSize.Y))
 	}
 	g.size = g.win.Bounds().Max
 	g.needsRefresh = true
@@ -224,28 +223,13 @@ func (g *GogoReader) Draw() {
 	// draw background
 	g.drawBackGround()
 
-	pageData := album.GetCurrentView()
+	currentView := album.GetCurrentView()
 
-	var totalWidth, maxHeight float64
-	for _, sprite := range pageData.imageSprites {
-		spriteW, spriteH := sprite.Frame().W(), sprite.Frame().H()
-		totalWidth += spriteW
-		if spriteH > maxHeight {
-			maxHeight = spriteH
-		}
-	}
+	totalWidth := currentView.totalWidth
+	maxHeight := currentView.maxHeight
 
 	// draw scaled images
-	scale := 1.0
-	if maxHeight > g.size.Y {
-		scale = g.size.Y / maxHeight
-	}
-	/*
-		FIXME
-			if (totalWidth * scale) > g.size.X {
-				scale = g.size.X / totalWidth
-			}
-	*/
+	scale := g.size.Y / maxHeight
 
 	if g.Zoom {
 		mousePosition := g.win.MousePosition()
@@ -264,14 +248,14 @@ func (g *GogoReader) Draw() {
 	}
 
 	center := g.win.Bounds().Center()
-	positions := make([]pixel.Vec, 0, len(pageData.imageSprites))
+	positions := make([]pixel.Vec, 0, len(currentView.imageSprites))
 	startX := center.X - (totalWidth / 2.0)
-	for _, sprite := range pageData.imageSprites {
+	for _, sprite := range currentView.imageSprites {
 		var imageW = sprite.Frame().W()
 		positions = append(positions, pixel.Vec{X: startX + imageW/2.0, Y: center.Y})
 		startX += sprite.Frame().W()
 	}
-	for index, sprite := range pageData.imageSprites {
+	for index, sprite := range currentView.imageSprites {
 		matrix := pixel.IM.Moved(positions[index])
 		if g.Zoom {
 			scale = g.win.Bounds().W() / totalWidth
@@ -364,7 +348,7 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 	var err error
 	var totalWidth, h float64
 
-	viewData.BackgroundColors = make([]pixel.RGBA, 0, 2)
+	viewData.BackgroundColors = make([]pixel.RGBA, 0, len(viewData.Images))
 	viewData.imageSprites = make([]*pixel.Sprite, 0, len(viewData.Images))
 	for index, imgData := range viewData.Images {
 		// ensure all images used by this page are loaded
@@ -420,6 +404,8 @@ func (g *GogoReader) prepareView(viewData *ViewData) error {
 		sprite := pixel.NewSprite(pictureData, pixel.R(float64(cropRect.Min.X), float64(cropRect.Min.Y), float64(cropRect.Max.X), float64(cropRect.Max.Y)))
 		viewData.imageSprites = append(viewData.imageSprites, sprite)
 	}
+
+	viewData.updateSize()
 
 	return err
 }
